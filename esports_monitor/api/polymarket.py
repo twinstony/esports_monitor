@@ -50,6 +50,11 @@ class PolymarketClient:
     # 队伍名解析正则：支持 "Will Team A defeat Team B?" 与 "Team A vs Team B"
     _RE_DEFEAT = re.compile(r"Will\s+(.+?)\s+defeat\s+(.+?)\s*\?", re.IGNORECASE)
     _RE_VS = re.compile(r"(.+?)\s+vs\.?\s+(.+)", re.IGNORECASE)
+    # 开头游戏前缀，如 "Counter-Strike:" / "Dota 2:" / "LoL:" / "Rainbow Six Siege:"
+    _RE_GAME_PREFIX = re.compile(r"^[^:]+:\s*")
+    # 队伍名后缀："(BO3) ..." 括号后缀 或 " - 赛事名" 后缀
+    _RE_TEAM_SUFFIX_PAREN = re.compile(r"\s*\(")
+    _RE_TEAM_SUFFIX_DASH = re.compile(r"\s+-\s+")
 
     def __init__(
         self,
@@ -304,20 +309,40 @@ class PolymarketClient:
         - "Will Team A defeat Team B?"
         - "Team A vs Team B"
         - "Team A v Team B"
+        - "游戏名: Team A vs Team B (BO3) - 赛事名"（Polymarket 电竞常见格式）
+
+        会自动去除：
+        - 开头的游戏前缀（如 "Counter-Strike:" / "Dota 2:" / "LoL:"）
+        - 队伍B 后的 "(BO3)" 括号后缀和 " - 赛事名" 后缀
 
         Returns:
             (team_a, team_b)；解析失败返回 ("", "")。
         """
         if not question:
             return "", ""
-        q = question.strip()
+        # 去除开头的游戏前缀，如 "Counter-Strike: " / "Dota 2: " / "Rainbow Six Siege: "
+        q = self._RE_GAME_PREFIX.sub("", question.strip(), count=1)
         m = self._RE_DEFEAT.search(q)
         if m:
-            return m.group(1).strip(), m.group(2).strip()
+            return m.group(1).strip(), self._clean_team_name(m.group(2))
         m = self._RE_VS.search(q)
         if m:
-            return m.group(1).strip(), m.group(2).strip()
+            return m.group(1).strip(), self._clean_team_name(m.group(2))
         return "", ""
+
+    @classmethod
+    def _clean_team_name(cls, name: str) -> str:
+        """清理队伍名：去除末尾的 (BO3) 括号后缀和 " - 赛事名" 后缀。
+
+        Polymarket 电竞 question 格式常为 "队伍B (BO3) - 赛事名"，
+        vs 正则的 group2 贪婪匹配会包含这些后缀，需在此清理。
+        """
+        s = name.strip()
+        # 先去除括号后缀 "(BO3) ..."（取括号前部分）
+        s = cls._RE_TEAM_SUFFIX_PAREN.split(s, maxsplit=1)[0]
+        # 再去除 " - 赛事名" 后缀（队伍名一般不含 " - "）
+        s = cls._RE_TEAM_SUFFIX_DASH.split(s, maxsplit=1)[0]
+        return s.strip()
 
     # ------------------------------------------------------------------
     # 辅助方法

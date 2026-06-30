@@ -37,6 +37,50 @@ class TestParseTeamNames:
     def test_no_match(self):
         assert self.client._parse_team_names("random text") == ("", "")
 
+    def test_game_prefix_stripped(self):
+        """Polymarket 电竞格式：去除开头的游戏前缀。"""
+        a, b = self.client._parse_team_names(
+            "Counter-Strike: Team StRoGo vs Team OverDrive (BO3) - BetBoom Streamers Battle Group A"
+        )
+        assert a == "Team StRoGo"
+        assert b == "Team OverDrive"
+
+    def test_dota2_prefix_stripped(self):
+        a, b = self.client._parse_team_names(
+            "Dota 2: Ilbirs eSports vs Habibis (BO3) - European Pro League Group B"
+        )
+        assert a == "Ilbirs eSports"
+        assert b == "Habibis"
+
+    def test_lol_prefix_stripped(self):
+        a, b = self.client._parse_team_names(
+            "LoL: Valerion vs ALMO Players (BO2) - HLL Regular Season"
+        )
+        assert a == "Valerion"
+        assert b == "ALMO Players"
+
+    def test_r6_prefix_stripped(self):
+        """赛事名含 ' - ' 也不应影响队伍名。"""
+        a, b = self.client._parse_team_names(
+            "Rainbow Six Siege: Daystar vs Weibo Gaming (BO1) - Asia Pacific League Asia - Stage 1 Group Stage"
+        )
+        assert a == "Daystar"
+        assert b == "Weibo Gaming"
+
+    def test_vs_without_paren_suffix(self):
+        """无括号后缀的 vs 格式仍正常工作。"""
+        a, b = self.client._parse_team_names("T1 vs Gen.G")
+        assert a == "T1"
+        assert b == "Gen.G"
+
+    def test_will_defeat_with_prefix(self):
+        """defeat 格式带游戏前缀也能解析。"""
+        a, b = self.client._parse_team_names(
+            "Counter-Strike: Will T1 defeat Gen.G?"
+        )
+        assert a == "T1"
+        assert b == "Gen.G"
+
 
 class TestParseJsonField:
     def test_list_input(self):
