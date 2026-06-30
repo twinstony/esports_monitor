@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>两区间形态对比策略 · 四窗口综合回测报告</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #0b0d10; --card: #14171c; --accent: #00d4aa; --accent2: #4cc9f0; --danger: #ff6b6b; --text: #e0e0e0; --muted: #8b92a8; --border: #23262d; }
+    body { margin:0; background: var(--bg); color: var(--text); font-family: 'Noto Sans SC', sans-serif; line-height:1.7; }
+    .container { max-width: 1280px; margin:0 auto; padding: 40px 20px; }
+    header { text-align:center; margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+    h1 { margin:0 0 12px; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+    .subtitle { color: var(--muted); }
+    .section, .market-card, .window-section { background: var(--card); border:1px solid var(--border); border-radius:16px; padding: 28px; margin-bottom: 32px; }
+    .window-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap: 12px; margin-bottom: 20px; }
+    .window-header h2 { margin:0; color: var(--accent); }
+    .window-badge { display:inline-block; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; background: rgba(0,212,170,0.12); color: var(--accent); border: 1px solid rgba(0,212,170,0.3); }
+    h2, h3 { margin-top:0; }
+    h3 { color: var(--accent2); margin-bottom: 16px; }
+    h4 { margin:0 0 8px; color: var(--accent); font-size: 1.1rem; }
+    .rule-group { margin-bottom: 32px; }
+    .rule-group:last-child { margin-bottom: 0; }
+    .rule-desc { color: var(--muted); font-size: 0.9rem; margin-bottom: 16px; }
+    table { width:100%; border-collapse: collapse; margin-top: 16px; font-size: 0.9rem; }
+    th, td { padding: 10px 8px; text-align:center; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 700; }
+    td { color: var(--text); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .chart { width:100%; height: 340px; margin-top: 16px; background: rgba(0,0,0,0.2); border-radius: 8px; }
+    .insight { background: rgba(0,212,170,0.08); border-left:4px solid var(--accent); padding: 20px; border-radius: 0 12px 12px 0; margin-bottom: 24px; }
+    .insight ul { color: var(--muted); }
+    .note { color: var(--muted); font-size: 0.85rem; margin-top: 12px; }
+    .signal-zh { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+    .hl { color: var(--accent); font-weight: 700; }
+    .metrics { display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin: 12px 0; }
+    .metric { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px; text-align:center; }
+    .metric .label { color: var(--muted); font-size: 0.75rem; }
+    .metric .value { font-size: 1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+    .badge { display:inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; background: rgba(0,212,170,0.15); color: var(--accent); border: 1px solid rgba(0,212,170,0.3); }
+    .badge.loss { background: rgba(255,107,107,0.15); color: var(--danger); border-color: rgba(255,107,107,0.3); }
+    .market-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap: 12px; margin-bottom: 8px; }
+    .buy-reason { background: rgba(0,212,170,0.08); border-left: 3px solid var(--accent); padding: 12px 16px; border-radius: 0 8px 8px 0; color: var(--muted); font-size: 0.9rem; margin: 12px 0; line-height: 1.7; }
+    .toc { background: rgba(255,255,255,0.03); border-radius: 12px; padding: 20px; margin-bottom: 32px; }
+    .toc a { color: var(--accent2); text-decoration: none; margin-right: 24px; }
+    .toc a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>两区间形态对比策略 · 四窗口综合回测报告</h1>
+      <p class="subtitle">结算前 1-5h、10-18h、10-24h、24-48h · 只看王牌区与准王牌区 · 不知道谁是 winner</p>
+      <p class="subtitle">生成时间：2026-06-24T23:34:36.354596</p>
+    </header>
+
+    <div class="toc">
+      <strong>目录：</strong>
+      <a href="#overview">总览</a>
+      <a href="#window-1-5h">1-5h 窗口</a>
+      <a href="#window-10-18h">10-18h 窗口</a>
+      <a href="#window-10-24h">10-24h 窗口</a>
+      <a href="#window-24-48h">24-48h 窗口</a>
+      <a href="#recommendations">统一交易建议</a>
+    </div>
+
+    <section id="overview">
+      <div class="insight">
+        <h2>核心总览</h2>
+        <ul>
+          <li>四个时间窗口覆盖了从“较远布局”到“临结算”的完整决策链条。</li>
+          <li><strong>24-48h</strong> 窗口适合趋势确认型信号 <em>current_and_recent_leader（强者恒强）</em>，胜率 55.6%，期望 11.6%（18 笔）。</li>
+          <li><strong>10-24h</strong> 窗口适合早期突破型信号 <em>breakout（突破反超）</em>，胜率 71.4%，期望 23.8%（7 笔）。</li>
+          <li><strong>10-18h</strong> 窗口适合趋势稳定型信号 <em>stable_spread（稳定领先）</em>，胜率 64.7%，期望 7.9%（17 笔）。</li>
+          <li><strong>1-5h</strong> 窗口因价格已接近结算，整体期望值偏低；相对最优为 <em>momentum_catcher（后发制人）</em>，胜率 33.3%，期望 2.9%（12 笔）。</li>
+          <li>所有买入点均基于王牌区与准王牌区两条价格曲线的连续形态对比，且买入价已过滤掉 ≥0.95 的无意义价位。</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>四窗口最佳策略一览</h2>
+        <table>
+          <thead>
+            <tr><th>窗口</th><th>市场数</th><th>最佳规则</th><th>交易数</th><th>胜率</th><th>平均盈亏</th><th>盈亏比</th><th>期望值</th><th>平均买入价</th></tr>
+          </thead>
+          <tbody>
+        <tr>
+          <td><strong>1-5h</strong></td>
+          <td>18</td>
+          <td>momentum_catcher<br><span class="signal-zh">后发制人</span></td>
+          <td>12</td>
+          <td>33.3%</td>
+          <td>2.9%</td>
+          <td>1.14</td>
+          <td>2.9%</td>
+          <td>0.305</td>
+        </tr>
+        
+        <tr>
+          <td><strong>10-18h</strong></td>
+          <td>18</td>
+          <td>stable_spread<br><span class="signal-zh">优势稳定</span></td>
+          <td>17</td>
+          <td>64.7%</td>
+          <td>7.9%</td>
+          <td>1.38</td>
+          <td>7.9%</td>
+          <td>0.568</td>
+        </tr>
+        
+        <tr>
+          <td><strong>10-24h</strong></td>
+          <td>18</td>
+          <td>breakout<br><span class="signal-zh">突破反超</span></td>
+          <td>7</td>
+          <td>71.4%</td>
+          <td>23.8%</td>
+          <td>2.84</td>
+          <td>23.8%</td>
+          <td>0.476</td>
+        </tr>
+        
+        <tr>
+          <td><strong>24-48h</strong></td>
+          <td>18</td>
+          <td>current_and_recent_leader<br><span class="signal-zh">强者恒强</span></td>
+          <td>18</td>
+          <td>55.6%</td>
+          <td>11.6%</td>
+          <td>1.61</td>
+          <td>11.6%</td>
+          <td>0.440</td>
+        </tr>
+        </tbody>
+        </table>
+      </div>
+    </section>
+
+    <script>var charts = [];</script>
+
+    
+    <section class="window-section" id="window-1-5h">
+      <div class="window-header">
+        <h2>1-5h 窗口：结算前 1~5 小时</h2>
+        <span class="window-badge">18 个市场</span>
+      </div>
+
+      <div class="insight">
+        <h3>关键发现</h3>
+        <ul>
+          <li>最佳规则：<strong>momentum_catcher（后发制人）</strong>，胜率 33.3%，平均盈亏 2.9%。</li>
+          <li>按期望值排名前三：momentum_catcher（后发制人）, stable_spread（优势稳定）, current_and_recent_leader（强者恒强）。</li>
+          <li>按胜率排名前三：stable_spread（71.4%）, acceleration（60.0%）, current_and_recent_leader（58.8%）。</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h3>交易策略说明</h3>
+        
+    <p><strong>窗口：</strong>结算前 1~5 小时。此阶段最佳形态信号为 <span class="hl">momentum_catcher（后发制人）</span>，
+    共产生 12 笔交易，胜率 33.3%，平均盈亏 2.9%，盈亏比 1.14，期望值 2.9%。</p>
+    <p><strong>策略含义：</strong>当前仍落后，但最近12h涨幅明显大于对手，且自身为正。 在 结算前 1~5 小时 这一时间段内，该形态最能识别出最终的王牌区。</p>
+    
+      </div>
+
+      <div class="section">
+        <h3>买入依据</h3>
+        
+    <ul>
+      <li><strong>买入形态：</strong>当王牌区与准王牌区之间出现 <em>后发制人</em> 形态时触发买入。</li>
+      <li><strong>买入方向：</strong>买入形态上占优的一方（本窗口为 momentum_catcher 所选方向）。</li>
+      <li><strong>买入价格：</strong>信号触发时刻该区间的实时 price_yes。</li>
+      <li><strong>买入时间：</strong>限制在结算前 1~5 小时之间首次触发。</li>
+      <li><strong>持有方式：</strong>First Signal 模式，每个市场每个规则只买入一次并持有到结算。</li>
+    </ul>
+    
+      </div>
+
+      <div class="section">
+        <h3>典型交易案例</h3>
+        <p class="note">黄色圆点标注买入点，绿色线为最终落点的王牌区，红色线为最强竞争者（准王牌区）。每个分组优先展示盈利案例，再补充亏损案例，且同一市场不重复出现。</p>
+        
+    <div class="rule-group">
+      <h4>momentum_catcher · 后发制人</h4>
+      <p class="rule-desc">当前仍落后，但最近12h涨幅明显大于对手，且自身为正。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-7-april-14</h4>
+            <span class="badge win">盈利 · PnL 82.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">280-299</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.180</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+795.9%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+68.0%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +795.9%，显著高于 准王牌区 的 +68.0%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.180 的价格买入 280-299。</div>
+          <div id="case-chart-0-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-22-may-29</h4>
+            <span class="badge win">盈利 · PnL 70.8%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">180-199</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.292</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">3h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+29.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-10.2%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 3 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +29.2%，显著高于 准王牌区 的 -10.2%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.292 的价格买入 180-199。</div>
+          <div id="case-chart-0-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-26-june-2</h4>
+            <span class="badge win">盈利 · PnL 61.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">160-179</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.386</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+1252.6%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-10.6%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +1252.6%，显著高于 准王牌区 的 -10.6%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.386 的价格买入 160-179。</div>
+          <div id="case-chart-0-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-8-may-15</h4>
+            <span class="badge win">盈利 · PnL 57.9%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">140-159</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.421</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">2h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+15.6%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+1.8%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 2 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +15.6%，显著高于 准王牌区 的 +1.8%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.421 的价格买入 140-159。</div>
+          <div id="case-chart-0-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>stable_spread · 优势稳定</h4>
+      <p class="rule-desc">当前领先且最近24h收益也领先。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-2-june-9</h4>
+            <span class="badge win">盈利 · PnL 35.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.645</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-11.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+62.5%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格 0.645 高于 准王牌区 的 0.325，且最近 24h 收益 +126.3% 也高于 准王牌区 的 -41.4%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.645 的价格买入 220-239。</div>
+          <div id="case-chart-1-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-12-june-19</h4>
+            <span class="badge win">盈利 · PnL 35.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">180-199</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.650</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-6.5%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+63.4%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格 0.650 高于 准王牌区 的 0.335，且最近 24h 收益 +36.8% 也高于 准王牌区 的 -24.7%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.650 的价格买入 180-199。</div>
+          <div id="case-chart-1-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-7-april-14</h4>
+            <span class="badge win">盈利 · PnL 34.4%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">280-299</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.656</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">1h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+8431.8%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-30.6%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 1 小时时，王牌区 当前价格 0.656 高于 准王牌区 的 0.341，且最近 24h 收益 +1002.9% 也高于 准王牌区 的 -4.2%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.656 的价格买入 280-299。</div>
+          <div id="case-chart-1-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-5-june-12</h4>
+            <span class="badge win">盈利 · PnL 31.8%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.682</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+11.4%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+266.7%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格 0.682 高于 准王牌区 的 0.275，且最近 24h 收益 +80.3% 也高于 准王牌区 的 -47.6%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.682 的价格买入 220-239。</div>
+          <div id="case-chart-1-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>current_and_recent_leader · 强者恒强</h4>
+      <p class="rule-desc">当前价格更高，且最近12h均价也更高。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-3-april-10</h4>
+            <span class="badge win">盈利 · PnL 43.4%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">240-259</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.566</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-8.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+176.3%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格 0.566 高于 准王牌区 的 0.354，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.566 的价格买入 240-259。</div>
+          <div id="case-chart-2-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-2-june-9</h4>
+            <span class="badge win">盈利 · PnL 35.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.645</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-11.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+62.5%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格 0.645 高于 准王牌区 的 0.325，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.645 的价格买入 220-239。</div>
+          <div id="case-chart-2-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-12-june-19</h4>
+            <span class="badge win">盈利 · PnL 35.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">180-199</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.650</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">4h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-6.5%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+63.4%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 4 小时时，王牌区 当前价格 0.650 高于 准王牌区 的 0.335，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.650 的价格买入 180-199。</div>
+          <div id="case-chart-2-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-march-31-april-7</h4>
+            <span class="badge win">盈利 · PnL 34.1%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">260-279</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.659</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">3h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+7.8%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+18.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 3 小时时，王牌区 当前价格 0.659 高于 准王牌区 的 0.317，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.659 的价格买入 260-279。</div>
+          <div id="case-chart-2-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+      </div>
+    </section>
+
+    <script>
+    var cc0_0 = echarts.init(document.getElementById('case-chart-0-0')); cc0_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.235, 0.2397, 0.319, 0.327, 0.285, 0.0948, 0.115, 0.105, 0.1024, 0.125, 0.0446, 0.0301, 0.0425, 0.0725, 0.0864, 0.0205, 0.0122, 0.0224, 0.0329, 0.0285, 0.0368, 0.043, 0.0517, 0.0595, 0.0671, 0.0719, 0.0726, 0.1048, 0.073, 0.0935, 0.112, 0.0205, 0.0201, 0.0131, 0.0093, 0.0077, 0.0191, 0.0435, 0.0225, 0.0674, 0.1553, 0.109, 0.1624, 0.1803, 0.212, 0.3718, 0.6562, 0.764]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.108, 0.0939, 0.2122, 0.2782, 0.272, 0.2169, 0.2115, 0.2012, 0.2291, 0.2477, 0.1573, 0.1679, 0.21, 0.246, 0.2435, 0.1825, 0.1965, 0.2864, 0.2641, 0.2685, 0.2923, 0.2986, 0.2915, 0.356, 0.3833, 0.4643, 0.4739, 0.5339, 0.513, 0.5476, 0.5685, 0.408, 0.42, 0.4151, 0.4272, 0.4914, 0.5318, 0.5795, 0.628, 0.7289, 0.7017, 0.7185, 0.752, 0.7055, 0.7148, 0.5669, 0.3409, 0.2365]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.1803]}]}]}); charts.push(cc0_0);
+var cc0_1 = echarts.init(document.getElementById('case-chart-0-1')); cc0_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.5115, 0.485, 0.4815, 0.4765, 0.4769, 0.4775, 0.4785, 0.5227, 0.5075, 0.4945, 0.5255, 0.5475, 0.5425, 0.4925, 0.4795, 0.5315, 0.355, 0.345, 0.3865, 0.372, 0.4045, 0.4125, 0.3995, 0.3865, 0.323, 0.295, 0.263, 0.2005, 0.286, 0.2775, 0.2355, 0.2206, 0.2775, 0.2264, 0.2405, 0.2125, 0.1845, 0.1795, 0.1455, 0.1315, 0.3315, 0.2885, 0.4685, 0.2935, 0.2925, 0.293, 0.984, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.1285, 0.2115, 0.2185, 0.2325, 0.2305, 0.221, 0.2755, 0.2315, 0.3095, 0.3455, 0.3185, 0.2605, 0.3355, 0.3905, 0.3995, 0.3775, 0.566, 0.5835, 0.5382, 0.5485, 0.5148, 0.5275, 0.542, 0.5495, 0.5845, 0.6316, 0.6745, 0.7215, 0.675, 0.7035, 0.7125, 0.7505, 0.7025, 0.7665, 0.7495, 0.7835, 0.8095, 0.8165, 0.8555, 0.8495, 0.6045, 0.7095, 0.522, 0.6915, 0.688, 0.71, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [44, 0.2925]}]}]}); charts.push(cc0_1);
+var cc0_2 = echarts.init(document.getElementById('case-chart-0-2')); cc0_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.2435, 0.2325, 0.21, 0.2065, 0.2005, 0.1815, 0.1525, 0.1695, 0.1535, 0.1455, 0.1483, 0.1488, 0.1977, 0.24, 0.2155, 0.2025, 0.206, 0.1865, 0.1575, 0.1625, 0.1555, 0.21, 0.186, 0.158, 0.147, 0.1105, 0.1105, 0.086, 0.0772, 0.0605, 0.0535, 0.0415, 0.0285, 0.094, 0.1015, 0.066, 0.0925, 0.0865, 0.1354, 0.368, 0.372, 0.3766, 0.3898, 0.3855, 0.4115, 0.8695, 0.8625, 0.9895]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.419, 0.4385, 0.442, 0.4345, 0.4135, 0.4115, 0.4105, 0.436, 0.4315, 0.4665, 0.4481, 0.4665, 0.5055, 0.5427, 0.566, 0.586, 0.5959, 0.5974, 0.5775, 0.5785, 0.6125, 0.6655, 0.675, 0.696, 0.721, 0.7535, 0.7585, 0.7355, 0.7379, 0.6855, 0.6615, 0.6635, 0.653, 0.7885, 0.8765, 0.8915, 0.894, 0.9105, 0.8565, 0.609, 0.619, 0.6203, 0.5893, 0.5835, 0.5955, 0.115, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.3855]}]}]}); charts.push(cc0_2);
+var cc0_3 = echarts.init(document.getElementById('case-chart-0-3')); cc0_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0925, 0.0925, 0.0785, 0.074, 0.0725, 0.0705, 0.065, 0.0834, 0.0997, 0.0925, 0.0836, 0.0759, 0.0686, 0.0695, 0.0705, 0.0715, 0.0725, 0.0595, 0.0531, 0.0465, 0.0384, 0.0388, 0.0365, 0.037, 0.032, 0.0315, 0.0935, 0.0725, 0.4015, 0.3245, 0.3451, 0.322, 0.2908, 0.2885, 0.3645, 0.3515, 0.4995, 0.6075, 0.571, 0.4664, 0.3435, 0.4105, 0.3805, 0.281, 0.1945, 0.4215, 0.9835, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.3605, 0.341, 0.3225, 0.3105, 0.2535, 0.2295, 0.211, 0.3025, 0.365, 0.376, 0.3885, 0.3722, 0.382, 0.3995, 0.4215, 0.411, 0.424, 0.408, 0.4005, 0.383, 0.4112, 0.3716, 0.3685, 0.3325, 0.347, 0.2915, 0.5615, 0.696, 0.4735, 0.5585, 0.5708, 0.6165, 0.6255, 0.6355, 0.5695, 0.589, 0.4015, 0.3245, 0.3895, 0.498, 0.6155, 0.566, 0.6185, 0.699, 0.8095, 0.5795, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [45, 0.4215]}]}]}); charts.push(cc0_3);var cc1_0 = echarts.init(document.getElementById('case-chart-1-0')); cc1_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.415, 0.395, 0.385, 0.345, 0.345, 0.345, 0.345, 0.4137, 0.3707, 0.355, 0.335, 0.325, 0.365, 0.3531, 0.3276, 0.365, 0.305, 0.275, 0.275, 0.285, 0.285, 0.285, 0.265, 0.255, 0.255, 0.425, 0.515, 0.545, 0.575, 0.585, 0.655, 0.6639, 0.725, 0.69, 0.675, 0.635, 0.72, 0.635, 0.735, 0.59, 0.575, 0.625, 0.675, 0.645, 0.605, 0.575, 0.355, 0.995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.325, 0.375, 0.345, 0.365, 0.3911, 0.395, 0.395, 0.335, 0.415, 0.425, 0.4563, 0.475, 0.455, 0.455, 0.475, 0.485, 0.555, 0.595, 0.585, 0.575, 0.555, 0.585, 0.585, 0.605, 0.6614, 0.495, 0.3912, 0.385, 0.355, 0.325, 0.175, 0.2105, 0.2, 0.2174, 0.265, 0.315, 0.235, 0.3244, 0.22, 0.38, 0.405, 0.365, 0.315, 0.325, 0.3882, 0.425, 0.615, 0.005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.645]}]}]}); charts.push(cc1_0);
+var cc1_1 = echarts.init(document.getElementById('case-chart-1-1')); cc1_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.385, 0.395, 0.375, 0.395, 0.415, 0.435, 0.425, 0.425, 0.4176, 0.415, 0.415, 0.32, 0.355, 0.375, 0.3439, 0.375, 0.435, 0.435, 0.485, 0.495, 0.475, 0.475, 0.485, 0.545, 0.545, 0.615, 0.585, 0.635, 0.655, 0.685, 0.695, 0.695, 0.695, 0.535, 0.5459, 0.505, 0.585, 0.615, 0.6, 0.695, 0.725, 0.69, 0.645, 0.65, 0.675, 0.7547, 0.955, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.385, 0.375, 0.415, 0.415, 0.3763, 0.385, 0.385, 0.385, 0.4299, 0.365, 0.365, 0.475, 0.495, 0.495, 0.4995, 0.5097, 0.475, 0.475, 0.425, 0.425, 0.445, 0.445, 0.435, 0.345, 0.365, 0.235, 0.365, 0.285, 0.255, 0.235, 0.19, 0.21, 0.205, 0.435, 0.3941, 0.475, 0.395, 0.365, 0.385, 0.285, 0.275, 0.295, 0.335, 0.335, 0.325, 0.235, 0.045, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.65]}]}]}); charts.push(cc1_1);
+var cc1_2 = echarts.init(document.getElementById('case-chart-1-2')); cc1_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.235, 0.2397, 0.319, 0.327, 0.285, 0.0948, 0.115, 0.105, 0.1024, 0.125, 0.0446, 0.0301, 0.0425, 0.0725, 0.0864, 0.0205, 0.0122, 0.0224, 0.0329, 0.0285, 0.0368, 0.043, 0.0517, 0.0595, 0.0671, 0.0719, 0.0726, 0.1048, 0.073, 0.0935, 0.112, 0.0205, 0.0201, 0.0131, 0.0093, 0.0077, 0.0191, 0.0435, 0.0225, 0.0674, 0.1553, 0.109, 0.1624, 0.1803, 0.212, 0.3718, 0.6562, 0.764]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.108, 0.0939, 0.2122, 0.2782, 0.272, 0.2169, 0.2115, 0.2012, 0.2291, 0.2477, 0.1573, 0.1679, 0.21, 0.246, 0.2435, 0.1825, 0.1965, 0.2864, 0.2641, 0.2685, 0.2923, 0.2986, 0.2915, 0.356, 0.3833, 0.4643, 0.4739, 0.5339, 0.513, 0.5476, 0.5685, 0.408, 0.42, 0.4151, 0.4272, 0.4914, 0.5318, 0.5795, 0.628, 0.7289, 0.7017, 0.7185, 0.752, 0.7055, 0.7148, 0.5669, 0.3409, 0.2365]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [46, 0.6562]}]}]}); charts.push(cc1_2);
+var cc1_3 = echarts.init(document.getElementById('case-chart-1-3')); cc1_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.3285, 0.3205, 0.2805, 0.2795, 0.2765, 0.276, 0.2785, 0.2375, 0.2505, 0.1855, 0.2405, 0.3092, 0.3795, 0.3325, 0.3045, 0.292, 0.2955, 0.2975, 0.3025, 0.4185, 0.3785, 0.3785, 0.4025, 0.3805, 0.3605, 0.526, 0.556, 0.537, 0.5401, 0.5655, 0.5445, 0.581, 0.6125, 0.6665, 0.6665, 0.6825, 0.6878, 0.7215, 0.7475, 0.7195, 0.715, 0.6815, 0.6985, 0.6825, 0.6847, 0.571, 0.6695, 0.9765]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.415, 0.465, 0.465, 0.475, 0.489, 0.5137, 0.525, 0.545, 0.535, 0.555, 0.555, 0.525, 0.465, 0.525, 0.555, 0.565, 0.565, 0.565, 0.565, 0.475, 0.525, 0.515, 0.475, 0.525, 0.535, 0.325, 0.275, 0.295, 0.305, 0.315, 0.335, 0.085, 0.075, 0.085, 0.085, 0.075, 0.095, 0.115, 0.1, 0.17, 0.265, 0.265, 0.265, 0.275, 0.285, 0.375, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.6825]}]}]}); charts.push(cc1_3);var cc2_0 = echarts.init(document.getElementById('case-chart-2-0')); cc2_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.395, 0.385, 0.385, 0.435, 0.395, 0.395, 0.375, 0.375, 0.3867, 0.375, 0.405, 0.3903, 0.335, 0.3878, 0.3985, 0.425, 0.375, 0.465, 0.455, 0.445, 0.435, 0.475, 0.485, 0.4901, 0.5001, 0.555, 0.57, 0.5771, 0.605, 0.605, 0.595, 0.5833, 0.615, 0.598, 0.625, 0.5702, 0.5973, 0.595, 0.6269, 0.6307, 0.668, 0.625, 0.595, 0.5659, 0.575, 0.505, 0.5348, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.235, 0.235, 0.255, 0.2553, 0.2904, 0.295, 0.325, 0.335, 0.335, 0.345, 0.305, 0.3273, 0.355, 0.2578, 0.1561, 0.1582, 0.085, 0.105, 0.1012, 0.095, 0.085, 0.095, 0.075, 0.0824, 0.1001, 0.1256, 0.1428, 0.1278, 0.145, 0.155, 0.13, 0.1333, 0.1282, 0.1385, 0.125, 0.1027, 0.1327, 0.1135, 0.1831, 0.1828, 0.1763, 0.305, 0.3266, 0.3541, 0.355, 0.47, 0.4453, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.5659]}]}]}); charts.push(cc2_0);
+var cc2_1 = echarts.init(document.getElementById('case-chart-2-1')); cc2_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.415, 0.395, 0.385, 0.345, 0.345, 0.345, 0.345, 0.4137, 0.3707, 0.355, 0.335, 0.325, 0.365, 0.3531, 0.3276, 0.365, 0.305, 0.275, 0.275, 0.285, 0.285, 0.285, 0.265, 0.255, 0.255, 0.425, 0.515, 0.545, 0.575, 0.585, 0.655, 0.6639, 0.725, 0.69, 0.675, 0.635, 0.72, 0.635, 0.735, 0.59, 0.575, 0.625, 0.675, 0.645, 0.605, 0.575, 0.355, 0.995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.325, 0.375, 0.345, 0.365, 0.3911, 0.395, 0.395, 0.335, 0.415, 0.425, 0.4563, 0.475, 0.455, 0.455, 0.475, 0.485, 0.555, 0.595, 0.585, 0.575, 0.555, 0.585, 0.585, 0.605, 0.6614, 0.495, 0.3912, 0.385, 0.355, 0.325, 0.175, 0.2105, 0.2, 0.2174, 0.265, 0.315, 0.235, 0.3244, 0.22, 0.38, 0.405, 0.365, 0.315, 0.325, 0.3882, 0.425, 0.615, 0.005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.645]}]}]}); charts.push(cc2_1);
+var cc2_2 = echarts.init(document.getElementById('case-chart-2-2')); cc2_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.385, 0.395, 0.375, 0.395, 0.415, 0.435, 0.425, 0.425, 0.4176, 0.415, 0.415, 0.32, 0.355, 0.375, 0.3439, 0.375, 0.435, 0.435, 0.485, 0.495, 0.475, 0.475, 0.485, 0.545, 0.545, 0.615, 0.585, 0.635, 0.655, 0.685, 0.695, 0.695, 0.695, 0.535, 0.5459, 0.505, 0.585, 0.615, 0.6, 0.695, 0.725, 0.69, 0.645, 0.65, 0.675, 0.7547, 0.955, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.385, 0.375, 0.415, 0.415, 0.3763, 0.385, 0.385, 0.385, 0.4299, 0.365, 0.365, 0.475, 0.495, 0.495, 0.4995, 0.5097, 0.475, 0.475, 0.425, 0.425, 0.445, 0.445, 0.435, 0.345, 0.365, 0.235, 0.365, 0.285, 0.255, 0.235, 0.19, 0.21, 0.205, 0.435, 0.3941, 0.475, 0.395, 0.365, 0.385, 0.285, 0.275, 0.295, 0.335, 0.335, 0.325, 0.235, 0.045, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [43, 0.65]}]}]}); charts.push(cc2_2);
+var cc2_3 = echarts.init(document.getElementById('case-chart-2-3')); cc2_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.355, 0.345, 0.355, 0.3871, 0.385, 0.385, 0.3907, 0.385, 0.395, 0.395, 0.385, 0.395, 0.405, 0.3824, 0.335, 0.355, 0.3897, 0.405, 0.4278, 0.405, 0.4541, 0.445, 0.455, 0.475, 0.471, 0.495, 0.5201, 0.5641, 0.5318, 0.5722, 0.5563, 0.575, 0.615, 0.6116, 0.605, 0.605, 0.6105, 0.635, 0.6514, 0.645, 0.675, 0.675, 0.1164, 0.3412, 0.6593, 0.7536, 0.911, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.205, 0.215, 0.205, 0.2429, 0.2488, 0.215, 0.245, 0.225, 0.215, 0.2182, 0.2354, 0.2405, 0.2813, 0.3076, 0.355, 0.3344, 0.2906, 0.2406, 0.3128, 0.365, 0.385, 0.355, 0.355, 0.355, 0.345, 0.325, 0.2748, 0.2546, 0.3094, 0.295, 0.3137, 0.2797, 0.2644, 0.2683, 0.2973, 0.2507, 0.2467, 0.2163, 0.2114, 0.205, 0.175, 0.2052, 0.6544, 0.6093, 0.3168, 0.2164, 0.0731, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [44, 0.6593]}]}]}); charts.push(cc2_3);
+    </script>
+    
+    <section class="window-section" id="window-10-18h">
+      <div class="window-header">
+        <h2>10-18h 窗口：结算前 10~18 小时</h2>
+        <span class="window-badge">18 个市场</span>
+      </div>
+
+      <div class="insight">
+        <h3>关键发现</h3>
+        <ul>
+          <li>最佳规则：<strong>stable_spread（优势稳定）</strong>，胜率 64.7%，平均盈亏 7.9%。</li>
+          <li>按期望值排名前三：stable_spread（优势稳定）, current_and_recent_leader（强者恒强）, divergence（走势分化）。</li>
+          <li>按胜率排名前三：current_and_recent_leader（64.7%）, stable_spread（64.7%）, divergence（60.0%）。</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h3>交易策略说明</h3>
+        
+    <p><strong>窗口：</strong>结算前 10~18 小时。此阶段最佳形态信号为 <span class="hl">stable_spread（优势稳定）</span>，
+    共产生 17 笔交易，胜率 64.7%，平均盈亏 7.9%，盈亏比 1.38，期望值 7.9%。</p>
+    <p><strong>策略含义：</strong>当前领先且最近24h收益也领先。 在 结算前 10~18 小时 这一时间段内，该形态最能识别出最终的王牌区。</p>
+    
+      </div>
+
+      <div class="section">
+        <h3>买入依据</h3>
+        
+    <ul>
+      <li><strong>买入形态：</strong>当王牌区与准王牌区之间出现 <em>优势稳定</em> 形态时触发买入。</li>
+      <li><strong>买入方向：</strong>买入形态上占优的一方（本窗口为 stable_spread 所选方向）。</li>
+      <li><strong>买入价格：</strong>信号触发时刻该区间的实时 price_yes。</li>
+      <li><strong>买入时间：</strong>限制在结算前 10~18 小时之间首次触发。</li>
+      <li><strong>持有方式：</strong>First Signal 模式，每个市场每个规则只买入一次并持有到结算。</li>
+    </ul>
+    
+      </div>
+
+      <div class="section">
+        <h3>典型交易案例</h3>
+        <p class="note">黄色圆点标注买入点，绿色线为最终落点的王牌区，红色线为最强竞争者（准王牌区）。每个分组优先展示盈利案例，再补充亏损案例，且同一市场不重复出现。</p>
+        
+    <div class="rule-group">
+      <h4>stable_spread · 优势稳定</h4>
+      <p class="rule-desc">当前领先且最近24h收益也领先。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-march-27-april-3</h4>
+            <span class="badge win">盈利 · PnL 77.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">260-279</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.230</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-33.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-83.6%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 当前价格 0.230 高于 准王牌区 的 0.022，且最近 24h 收益 -47.3% 也高于 准王牌区 的 -90.9%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.230 的价格买入 260-279。</div>
+          <div id="case-chart-10-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-9-june-16</h4>
+            <span class="badge win">盈利 · PnL 54.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">200-219</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.455</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+264.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-10.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 当前价格 0.455 高于 准王牌区 的 0.445，且最近 24h 收益 +93.6% 也高于 准王牌区 的 +7.2%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.455 的价格买入 200-219。</div>
+          <div id="case-chart-10-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-8-may-15</h4>
+            <span class="badge win">盈利 · PnL 50.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">140-159</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.499</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">11h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+1485.7%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+37.7%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 11 小时时，王牌区 当前价格 0.499 高于 准王牌区 的 0.402，且最近 24h 收益 +618.7% 也高于 准王牌区 的 +0.5%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.499 的价格买入 140-159。</div>
+          <div id="case-chart-10-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-10-april-17</h4>
+            <span class="badge win">盈利 · PnL 46.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">300-319</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.535</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+20.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-12.3%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 当前价格 0.535 高于 准王牌区 的 0.156，且最近 24h 收益 +50.7% 也高于 准王牌区 的 -27.1%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.535 的价格买入 300-319。</div>
+          <div id="case-chart-10-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>current_and_recent_leader · 强者恒强</h4>
+      <p class="rule-desc">当前价格更高，且最近12h均价也更高。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-march-27-april-3</h4>
+            <span class="badge win">盈利 · PnL 77.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">260-279</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.230</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-33.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-83.6%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 当前价格 0.230 高于 准王牌区 的 0.022，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.230 的价格买入 260-279。</div>
+          <div id="case-chart-11-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-12-may-19</h4>
+            <span class="badge win">盈利 · PnL 52.8%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.471</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">14h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-12.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+136.2%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 14 小时时，王牌区 当前价格 0.471 高于 准王牌区 的 0.460，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.471 的价格买入 220-239。</div>
+          <div id="case-chart-11-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-10-april-17</h4>
+            <span class="badge win">盈利 · PnL 46.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">300-319</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.535</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+20.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-12.3%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 当前价格 0.535 高于 准王牌区 的 0.156，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.535 的价格买入 300-319。</div>
+          <div id="case-chart-11-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-5-june-12</h4>
+            <span class="badge win">盈利 · PnL 45.6%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.544</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+30.1%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-29.5%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 当前价格 0.544 高于 准王牌区 的 0.335，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.544 的价格买入 220-239。</div>
+          <div id="case-chart-11-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>divergence · 走势分化</h4>
+      <p class="rule-desc">一个区间12h上涨，另一个12h下跌。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-9-june-16</h4>
+            <span class="badge win">盈利 · PnL 54.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">200-219</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.455</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+264.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-10.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 最近 12h 收益为 +264.0%，而 准王牌区 最近 12h 收益为 -10.1%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.455 的价格买入 200-219。</div>
+          <div id="case-chart-12-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-10-april-17</h4>
+            <span class="badge win">盈利 · PnL 46.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">300-319</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.535</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+20.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-12.3%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 最近 12h 收益为 +20.2%，而 准王牌区 最近 12h 收益为 -12.3%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.535 的价格买入 300-319。</div>
+          <div id="case-chart-12-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-5-june-12</h4>
+            <span class="badge win">盈利 · PnL 45.6%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.544</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+30.1%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-29.5%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 最近 12h 收益为 +30.1%，而 准王牌区 最近 12h 收益为 -29.5%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.544 的价格买入 220-239。</div>
+          <div id="case-chart-12-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-march-31-april-7</h4>
+            <span class="badge win">盈利 · PnL 44.4%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">260-279</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.556</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+37.4%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-14.0%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 最近 12h 收益为 +37.4%，而 准王牌区 最近 12h 收益为 -14.0%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.556 的价格买入 260-279。</div>
+          <div id="case-chart-12-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+      </div>
+    </section>
+
+    <script>
+    var cc10_0 = echarts.init(document.getElementById('case-chart-10-0')); cc10_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.295, 0.378, 0.3697, 0.38, 0.3644, 0.3982, 0.41, 0.4368, 0.4306, 0.4439, 0.4333, 0.415, 0.405, 0.395, 0.415, 0.4076, 0.2788, 0.33, 0.365, 0.345, 0.3418, 0.3196, 0.2907, 0.245, 0.205, 0.185, 0.1359, 0.1068, 0.1328, 0.1779, 0.2303, 0.145, 0.125, 0.1336, 0.135, 0.129, 0.1207, 0.135, 0.1861, 0.2274, 0.4418, 0.5261, 0.7051, 0.704, 0.739, 0.0961, 0.6314, 0.988]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.315, 0.24, 0.26, 0.255, 0.2547, 0.2499, 0.225, 0.2418, 0.2537, 0.2345, 0.225, 0.2193, 0.245, 0.235, 0.225, 0.2076, 0.17, 0.1449, 0.145, 0.135, 0.125, 0.125, 0.1065, 0.085, 0.075, 0.045, 0.0254, 0.0254, 0.0184, 0.0251, 0.0221, 0.0215, 0.029, 0.0175, 0.0175, 0.0189, 0.0125, 0.0138, 0.0203, 0.0189, 0.0546, 0.0631, 0.1424, 0.2709, 0.2357, 0.7166, 0.3615, 0.011]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.2303]}]}]}); charts.push(cc10_0);
+var cc10_1 = echarts.init(document.getElementById('case-chart-10-1')); cc10_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.08, 0.085, 0.105, 0.1144, 0.085, 0.095, 0.12, 0.235, 0.205, 0.175, 0.18, 0.175, 0.245, 0.295, 0.245, 0.195, 0.175, 0.135, 0.125, 0.125, 0.125, 0.125, 0.105, 0.135, 0.2297, 0.285, 0.215, 0.405, 0.385, 0.445, 0.455, 0.405, 0.465, 0.395, 0.375, 0.335, 0.2777, 0.265, 0.445, 0.275, 0.255, 0.2387, 0.295, 0.295, 0.295, 0.285, 0.985, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.23, 0.245, 0.255, 0.3088, 0.285, 0.295, 0.365, 0.415, 0.445, 0.455, 0.455, 0.475, 0.485, 0.455, 0.49, 0.5, 0.505, 0.515, 0.51, 0.495, 0.495, 0.455, 0.455, 0.465, 0.6154, 0.595, 0.655, 0.545, 0.505, 0.505, 0.445, 0.515, 0.4678, 0.545, 0.565, 0.665, 0.735, 0.735, 0.555, 0.685, 0.725, 0.7364, 0.725, 0.695, 0.675, 0.715, 0.005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.455]}]}]}); charts.push(cc10_1);
+var cc10_2 = echarts.init(document.getElementById('case-chart-10-2')); cc10_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0925, 0.0925, 0.0785, 0.074, 0.0725, 0.0705, 0.065, 0.0834, 0.0997, 0.0925, 0.0836, 0.0759, 0.0686, 0.0695, 0.0705, 0.0715, 0.0725, 0.0595, 0.0531, 0.0465, 0.0384, 0.0388, 0.0365, 0.037, 0.032, 0.0315, 0.0935, 0.0725, 0.4015, 0.3245, 0.3451, 0.322, 0.2908, 0.2885, 0.3645, 0.3515, 0.4995, 0.6075, 0.571, 0.4664, 0.3435, 0.4105, 0.3805, 0.281, 0.1945, 0.4215, 0.9835, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.3605, 0.341, 0.3225, 0.3105, 0.2535, 0.2295, 0.211, 0.3025, 0.365, 0.376, 0.3885, 0.3722, 0.382, 0.3995, 0.4215, 0.411, 0.424, 0.408, 0.4005, 0.383, 0.4112, 0.3716, 0.3685, 0.3325, 0.347, 0.2915, 0.5615, 0.696, 0.4735, 0.5585, 0.5708, 0.6165, 0.6255, 0.6355, 0.5695, 0.589, 0.4015, 0.3245, 0.3895, 0.498, 0.6155, 0.566, 0.6185, 0.699, 0.8095, 0.5795, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [36, 0.4995]}]}]}); charts.push(cc10_2);
+var cc10_3 = echarts.init(document.getElementById('case-chart-10-3')); cc10_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.28, 0.305, 0.325, 0.325, 0.325, 0.325, 0.345, 0.355, 0.3469, 0.355, 0.365, 0.375, 0.365, 0.385, 0.365, 0.341, 0.345, 0.395, 0.435, 0.445, 0.455, 0.4624, 0.465, 0.475, 0.5065, 0.515, 0.5224, 0.545, 0.545, 0.555, 0.535, 0.5185, 0.565, 0.535, 0.4837, 0.475, 0.43, 0.475, 0.5514, 0.635, 0.6704, 0.695, 0.7001, 0.7093, 0.815, 0.905, 0.9485, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.2805, 0.26, 0.272, 0.243, 0.2455, 0.2405, 0.2319, 0.2135, 0.1918, 0.2405, 0.2136, 0.2125, 0.2125, 0.2055, 0.1885, 0.1755, 0.1636, 0.236, 0.1971, 0.1775, 0.1806, 0.2305, 0.1985, 0.2375, 0.1784, 0.1925, 0.228, 0.2035, 0.1845, 0.164, 0.1557, 0.1505, 0.1635, 0.1505, 0.3279, 0.3645, 0.4235, 0.4415, 0.3666, 0.2845, 0.2645, 0.2454, 0.2545, 0.234, 0.16, 0.0914, 0.0445, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.535]}]}]}); charts.push(cc10_3);var cc11_0 = echarts.init(document.getElementById('case-chart-11-0')); cc11_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.295, 0.378, 0.3697, 0.38, 0.3644, 0.3982, 0.41, 0.4368, 0.4306, 0.4439, 0.4333, 0.415, 0.405, 0.395, 0.415, 0.4076, 0.2788, 0.33, 0.365, 0.345, 0.3418, 0.3196, 0.2907, 0.245, 0.205, 0.185, 0.1359, 0.1068, 0.1328, 0.1779, 0.2303, 0.145, 0.125, 0.1336, 0.135, 0.129, 0.1207, 0.135, 0.1861, 0.2274, 0.4418, 0.5261, 0.7051, 0.704, 0.739, 0.0961, 0.6314, 0.988]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.315, 0.24, 0.26, 0.255, 0.2547, 0.2499, 0.225, 0.2418, 0.2537, 0.2345, 0.225, 0.2193, 0.245, 0.235, 0.225, 0.2076, 0.17, 0.1449, 0.145, 0.135, 0.125, 0.125, 0.1065, 0.085, 0.075, 0.045, 0.0254, 0.0254, 0.0184, 0.0251, 0.0221, 0.0215, 0.029, 0.0175, 0.0175, 0.0189, 0.0125, 0.0138, 0.0203, 0.0189, 0.0546, 0.0631, 0.1424, 0.2709, 0.2357, 0.7166, 0.3615, 0.011]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.2303]}]}]}); charts.push(cc11_0);
+var cc11_1 = echarts.init(document.getElementById('case-chart-11-1')); cc11_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.1565, 0.1721, 0.1555, 0.123, 0.1224, 0.109, 0.1075, 0.1095, 0.1075, 0.1105, 0.228, 0.3295, 0.363, 0.3435, 0.2785, 0.328, 0.523, 0.559, 0.546, 0.5135, 0.5225, 0.5245, 0.5355, 0.5325, 0.3785, 0.3765, 0.4319, 0.5095, 0.507, 0.3395, 0.3385, 0.3152, 0.381, 0.4715, 0.411, 0.4335, 0.4555, 0.5475, 0.5405, 0.7145, 0.7913, 0.794, 0.7799, 0.8155, 0.8535, 0.9335, 0.9781, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.0255, 0.0309, 0.0235, 0.0225, 0.0215, 0.0255, 0.0215, 0.0239, 0.0215, 0.0175, 0.0355, 0.0635, 0.0655, 0.0545, 0.0385, 0.0535, 0.163, 0.1725, 0.1635, 0.147, 0.15, 0.1805, 0.1945, 0.3195, 0.417, 0.421, 0.3787, 0.3265, 0.3395, 0.4615, 0.4655, 0.4842, 0.4745, 0.4595, 0.5005, 0.5065, 0.479, 0.4105, 0.4035, 0.2578, 0.1832, 0.195, 0.1943, 0.1705, 0.132, 0.0695, 0.0203, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [33, 0.4715]}]}]}); charts.push(cc11_1);
+var cc11_2 = echarts.init(document.getElementById('case-chart-11-2')); cc11_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.28, 0.305, 0.325, 0.325, 0.325, 0.325, 0.345, 0.355, 0.3469, 0.355, 0.365, 0.375, 0.365, 0.385, 0.365, 0.341, 0.345, 0.395, 0.435, 0.445, 0.455, 0.4624, 0.465, 0.475, 0.5065, 0.515, 0.5224, 0.545, 0.545, 0.555, 0.535, 0.5185, 0.565, 0.535, 0.4837, 0.475, 0.43, 0.475, 0.5514, 0.635, 0.6704, 0.695, 0.7001, 0.7093, 0.815, 0.905, 0.9485, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.2805, 0.26, 0.272, 0.243, 0.2455, 0.2405, 0.2319, 0.2135, 0.1918, 0.2405, 0.2136, 0.2125, 0.2125, 0.2055, 0.1885, 0.1755, 0.1636, 0.236, 0.1971, 0.1775, 0.1806, 0.2305, 0.1985, 0.2375, 0.1784, 0.1925, 0.228, 0.2035, 0.1845, 0.164, 0.1557, 0.1505, 0.1635, 0.1505, 0.3279, 0.3645, 0.4235, 0.4415, 0.3666, 0.2845, 0.2645, 0.2454, 0.2545, 0.234, 0.16, 0.0914, 0.0445, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.535]}]}]}); charts.push(cc11_2);
+var cc11_3 = echarts.init(document.getElementById('case-chart-11-3')); cc11_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.3285, 0.3205, 0.2805, 0.2795, 0.2765, 0.276, 0.2785, 0.2375, 0.2505, 0.1855, 0.2405, 0.3092, 0.3795, 0.3325, 0.3045, 0.292, 0.2955, 0.2975, 0.3025, 0.4185, 0.3785, 0.3785, 0.4025, 0.3805, 0.3605, 0.526, 0.556, 0.537, 0.5401, 0.5655, 0.5445, 0.581, 0.6125, 0.6665, 0.6665, 0.6825, 0.6878, 0.7215, 0.7475, 0.7195, 0.715, 0.6815, 0.6985, 0.6825, 0.6847, 0.571, 0.6695, 0.9765]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.415, 0.465, 0.465, 0.475, 0.489, 0.5137, 0.525, 0.545, 0.535, 0.555, 0.555, 0.525, 0.465, 0.525, 0.555, 0.565, 0.565, 0.565, 0.565, 0.475, 0.525, 0.515, 0.475, 0.525, 0.535, 0.325, 0.275, 0.295, 0.305, 0.315, 0.335, 0.085, 0.075, 0.085, 0.085, 0.075, 0.095, 0.115, 0.1, 0.17, 0.265, 0.265, 0.265, 0.275, 0.285, 0.375, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.5445]}]}]}); charts.push(cc11_3);var cc12_0 = echarts.init(document.getElementById('case-chart-12-0')); cc12_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.08, 0.085, 0.105, 0.1144, 0.085, 0.095, 0.12, 0.235, 0.205, 0.175, 0.18, 0.175, 0.245, 0.295, 0.245, 0.195, 0.175, 0.135, 0.125, 0.125, 0.125, 0.125, 0.105, 0.135, 0.2297, 0.285, 0.215, 0.405, 0.385, 0.445, 0.455, 0.405, 0.465, 0.395, 0.375, 0.335, 0.2777, 0.265, 0.445, 0.275, 0.255, 0.2387, 0.295, 0.295, 0.295, 0.285, 0.985, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.23, 0.245, 0.255, 0.3088, 0.285, 0.295, 0.365, 0.415, 0.445, 0.455, 0.455, 0.475, 0.485, 0.455, 0.49, 0.5, 0.505, 0.515, 0.51, 0.495, 0.495, 0.455, 0.455, 0.465, 0.6154, 0.595, 0.655, 0.545, 0.505, 0.505, 0.445, 0.515, 0.4678, 0.545, 0.565, 0.665, 0.735, 0.735, 0.555, 0.685, 0.725, 0.7364, 0.725, 0.695, 0.675, 0.715, 0.005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.455]}]}]}); charts.push(cc12_0);
+var cc12_1 = echarts.init(document.getElementById('case-chart-12-1')); cc12_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.28, 0.305, 0.325, 0.325, 0.325, 0.325, 0.345, 0.355, 0.3469, 0.355, 0.365, 0.375, 0.365, 0.385, 0.365, 0.341, 0.345, 0.395, 0.435, 0.445, 0.455, 0.4624, 0.465, 0.475, 0.5065, 0.515, 0.5224, 0.545, 0.545, 0.555, 0.535, 0.5185, 0.565, 0.535, 0.4837, 0.475, 0.43, 0.475, 0.5514, 0.635, 0.6704, 0.695, 0.7001, 0.7093, 0.815, 0.905, 0.9485, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.2805, 0.26, 0.272, 0.243, 0.2455, 0.2405, 0.2319, 0.2135, 0.1918, 0.2405, 0.2136, 0.2125, 0.2125, 0.2055, 0.1885, 0.1755, 0.1636, 0.236, 0.1971, 0.1775, 0.1806, 0.2305, 0.1985, 0.2375, 0.1784, 0.1925, 0.228, 0.2035, 0.1845, 0.164, 0.1557, 0.1505, 0.1635, 0.1505, 0.3279, 0.3645, 0.4235, 0.4415, 0.3666, 0.2845, 0.2645, 0.2454, 0.2545, 0.234, 0.16, 0.0914, 0.0445, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.535]}]}]}); charts.push(cc12_1);
+var cc12_2 = echarts.init(document.getElementById('case-chart-12-2')); cc12_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.3285, 0.3205, 0.2805, 0.2795, 0.2765, 0.276, 0.2785, 0.2375, 0.2505, 0.1855, 0.2405, 0.3092, 0.3795, 0.3325, 0.3045, 0.292, 0.2955, 0.2975, 0.3025, 0.4185, 0.3785, 0.3785, 0.4025, 0.3805, 0.3605, 0.526, 0.556, 0.537, 0.5401, 0.5655, 0.5445, 0.581, 0.6125, 0.6665, 0.6665, 0.6825, 0.6878, 0.7215, 0.7475, 0.7195, 0.715, 0.6815, 0.6985, 0.6825, 0.6847, 0.571, 0.6695, 0.9765]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.415, 0.465, 0.465, 0.475, 0.489, 0.5137, 0.525, 0.545, 0.535, 0.555, 0.555, 0.525, 0.465, 0.525, 0.555, 0.565, 0.565, 0.565, 0.565, 0.475, 0.525, 0.515, 0.475, 0.525, 0.535, 0.325, 0.275, 0.295, 0.305, 0.315, 0.335, 0.085, 0.075, 0.085, 0.085, 0.075, 0.095, 0.115, 0.1, 0.17, 0.265, 0.265, 0.265, 0.275, 0.285, 0.375, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.5445]}]}]}); charts.push(cc12_2);
+var cc12_3 = echarts.init(document.getElementById('case-chart-12-3')); cc12_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.355, 0.345, 0.355, 0.3871, 0.385, 0.385, 0.3907, 0.385, 0.395, 0.395, 0.385, 0.395, 0.405, 0.3824, 0.335, 0.355, 0.3897, 0.405, 0.4278, 0.405, 0.4541, 0.445, 0.455, 0.475, 0.471, 0.495, 0.5201, 0.5641, 0.5318, 0.5722, 0.5563, 0.575, 0.615, 0.6116, 0.605, 0.605, 0.6105, 0.635, 0.6514, 0.645, 0.675, 0.675, 0.1164, 0.3412, 0.6593, 0.7536, 0.911, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.205, 0.215, 0.205, 0.2429, 0.2488, 0.215, 0.245, 0.225, 0.215, 0.2182, 0.2354, 0.2405, 0.2813, 0.3076, 0.355, 0.3344, 0.2906, 0.2406, 0.3128, 0.365, 0.385, 0.355, 0.355, 0.355, 0.345, 0.325, 0.2748, 0.2546, 0.3094, 0.295, 0.3137, 0.2797, 0.2644, 0.2683, 0.2973, 0.2507, 0.2467, 0.2163, 0.2114, 0.205, 0.175, 0.2052, 0.6544, 0.6093, 0.3168, 0.2164, 0.0731, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.5563]}]}]}); charts.push(cc12_3);
+    </script>
+    
+    <section class="window-section" id="window-10-24h">
+      <div class="window-header">
+        <h2>10-24h 窗口：结算前 10~24 小时</h2>
+        <span class="window-badge">18 个市场</span>
+      </div>
+
+      <div class="insight">
+        <h3>关键发现</h3>
+        <ul>
+          <li>最佳规则：<strong>breakout（突破反超）</strong>，胜率 71.4%，平均盈亏 23.8%。</li>
+          <li>按期望值排名前三：breakout（突破反超）, momentum_catcher（后发制人）, divergence（走势分化）。</li>
+          <li>按胜率排名前三：breakout（71.4%）, divergence（58.8%）, current_and_recent_leader（55.6%）。</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h3>交易策略说明</h3>
+        
+    <p><strong>窗口：</strong>结算前 10~24 小时。此阶段最佳形态信号为 <span class="hl">breakout（突破反超）</span>，
+    共产生 7 笔交易，胜率 71.4%，平均盈亏 23.8%，盈亏比 2.84，期望值 23.8%。</p>
+    <p><strong>策略含义：</strong>6h前落后，当前反超，且6h涨幅>20%。 在 结算前 10~24 小时 这一时间段内，该形态最能识别出最终的王牌区。</p>
+    
+      </div>
+
+      <div class="section">
+        <h3>买入依据</h3>
+        
+    <ul>
+      <li><strong>买入形态：</strong>当王牌区与准王牌区之间出现 <em>突破反超</em> 形态时触发买入。</li>
+      <li><strong>买入方向：</strong>买入形态上占优的一方（本窗口为 breakout 所选方向）。</li>
+      <li><strong>买入价格：</strong>信号触发时刻该区间的实时 price_yes。</li>
+      <li><strong>买入时间：</strong>限制在结算前 10~24 小时之间首次触发。</li>
+      <li><strong>持有方式：</strong>First Signal 模式，每个市场每个规则只买入一次并持有到结算。</li>
+    </ul>
+    
+      </div>
+
+      <div class="section">
+        <h3>典型交易案例</h3>
+        <p class="note">黄色圆点标注买入点，绿色线为最终落点的王牌区，红色线为最强竞争者（准王牌区）。每个分组优先展示盈利案例，再补充亏损案例，且同一市场不重复出现。</p>
+        
+    <div class="rule-group">
+      <h4>breakout · 突破反超</h4>
+      <p class="rule-desc">6h前落后，当前反超，且6h涨幅>20%。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-15-may-22</h4>
+            <span class="badge win">盈利 · PnL 57.1%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">280-299</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.428</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">23h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+36.4%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-19.6%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 23 小时时，王牌区 当前价格 0.428 反超 准王牌区 的 0.332，且最近 6h 收益 +31.2% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.428 的价格买入 280-299。</div>
+          <div id="case-chart-20-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-9-june-16</h4>
+            <span class="badge win">盈利 · PnL 54.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">200-219</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.455</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">17h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+264.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-10.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 17 小时时，王牌区 当前价格 0.455 反超 准王牌区 的 0.445，且最近 6h 收益 +59.6% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.455 的价格买入 200-219。</div>
+          <div id="case-chart-20-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-8-may-15</h4>
+            <span class="badge win">盈利 · PnL 50.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">140-159</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.499</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">11h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+1485.7%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+37.7%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 11 小时时，王牌区 当前价格 0.499 反超 准王牌区 的 0.402，且最近 6h 收益 +55.1% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.499 的价格买入 140-159。</div>
+          <div id="case-chart-20-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-2-june-9</h4>
+            <span class="badge win">盈利 · PnL 48.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.515</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">21h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+41.1%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-19.3%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 21 小时时，王牌区 当前价格 0.515 反超 准王牌区 的 0.391，且最近 6h 收益 +80.7% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.515 的价格买入 220-239。</div>
+          <div id="case-chart-20-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>momentum_catcher · 后发制人</h4>
+      <p class="rule-desc">当前仍落后，但最近12h涨幅明显大于对手，且自身为正。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-7-april-14</h4>
+            <span class="badge win">盈利 · PnL 92.7%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">280-299</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.073</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">21h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+254.1%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+159.7%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 21 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +254.1%，显著高于 准王牌区 的 +159.7%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.073 的价格买入 280-299。</div>
+          <div id="case-chart-21-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-15-may-22</h4>
+            <span class="badge win">盈利 · PnL 64.2%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">280-299</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.358</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">21h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+21.6%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-5.5%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 21 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +21.6%，显著高于 准王牌区 的 -5.5%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.358 的价格买入 280-299。</div>
+          <div id="case-chart-21-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-8-may-15</h4>
+            <span class="badge win">盈利 · PnL 59.9%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">140-159</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.402</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">19h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+574.8%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+16.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 19 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +574.8%，显著高于 准王牌区 的 +16.1%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.402 的价格买入 140-159。</div>
+          <div id="case-chart-21-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-9-june-16</h4>
+            <span class="badge win">盈利 · PnL 59.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">200-219</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.405</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">20h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+131.4%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+7.9%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 20 小时时，王牌区 当前价格虽暂时低于 准王牌区，但最近 12h 收益为 +131.4%，显著高于 准王牌区 的 +7.9%，呈现“后发制人”形态，触发 momentum_catcher 买入信号，因此以 0.405 的价格买入 200-219。</div>
+          <div id="case-chart-21-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>divergence · 走势分化</h4>
+      <p class="rule-desc">一个区间12h上涨，另一个12h下跌。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-15-may-22</h4>
+            <span class="badge win">盈利 · PnL 57.1%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">280-299</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.428</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">23h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+36.4%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-19.6%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 23 小时时，王牌区 最近 12h 收益为 +36.4%，而 准王牌区 最近 12h 收益为 -19.6%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.428 的价格买入 280-299。</div>
+          <div id="case-chart-22-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-march-31-april-7</h4>
+            <span class="badge win">盈利 · PnL 50.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">260-279</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.495</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">22h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+47.8%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-8.5%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 22 小时时，王牌区 最近 12h 收益为 +47.8%，而 准王牌区 最近 12h 收益为 -8.5%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.495 的价格买入 260-279。</div>
+          <div id="case-chart-22-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-3-april-10</h4>
+            <span class="badge win">盈利 · PnL 50.0%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">240-259</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.500</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">23h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+29.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-61.2%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 23 小时时，王牌区 最近 12h 收益为 +29.0%，而 准王牌区 最近 12h 收益为 -61.2%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.500 的价格买入 240-259。</div>
+          <div id="case-chart-22-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-10-april-17</h4>
+            <span class="badge win">盈利 · PnL 49.4%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">300-319</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.506</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">23h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+31.6%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-13.2%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 23 小时时，王牌区 最近 12h 收益为 +31.6%，而 准王牌区 最近 12h 收益为 -13.2%，两者走势明显分化，呈现“走势分化”形态，触发 divergence 买入信号，因此以 0.506 的价格买入 300-319。</div>
+          <div id="case-chart-22-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+      </div>
+    </section>
+
+    <script>
+    var cc20_0 = echarts.init(document.getElementById('case-chart-20-0')); cc20_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0585, 0.0835, 0.0813, 0.0775, 0.0955, 0.0905, 0.0815, 0.0845, 0.0705, 0.1045, 0.2067, 0.2205, 0.2255, 0.3141, 0.2945, 0.2945, 0.349, 0.3535, 0.3335, 0.3265, 0.3215, 0.3305, 0.3605, 0.461, 0.4285, 0.411, 0.358, 0.351, 0.3286, 0.3134, 0.3145, 0.3184, 0.3115, 0.4025, 0.3875, 0.3545, 0.3145, 0.2505, 0.2315, 0.2105, 0.22, 0.202, 0.1865, 0.1507, 0.1267, 0.7895, 0.9855, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.204, 0.274, 0.2755, 0.2905, 0.3395, 0.3195, 0.3095, 0.303, 0.3127, 0.3255, 0.3846, 0.385, 0.427, 0.4122, 0.42, 0.4575, 0.3915, 0.4025, 0.4565, 0.4565, 0.472, 0.4645, 0.4325, 0.3185, 0.3315, 0.346, 0.4325, 0.4485, 0.4735, 0.5152, 0.5215, 0.5159, 0.5655, 0.459, 0.5335, 0.5905, 0.6495, 0.7365, 0.7445, 0.7585, 0.7713, 0.802, 0.808, 0.8397, 0.8676, 0.1735, 0.0005, 0.0]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [24, 0.4285]}]}]}); charts.push(cc20_0);
+var cc20_1 = echarts.init(document.getElementById('case-chart-20-1')); cc20_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.08, 0.085, 0.105, 0.1144, 0.085, 0.095, 0.12, 0.235, 0.205, 0.175, 0.18, 0.175, 0.245, 0.295, 0.245, 0.195, 0.175, 0.135, 0.125, 0.125, 0.125, 0.125, 0.105, 0.135, 0.2297, 0.285, 0.215, 0.405, 0.385, 0.445, 0.455, 0.405, 0.465, 0.395, 0.375, 0.335, 0.2777, 0.265, 0.445, 0.275, 0.255, 0.2387, 0.295, 0.295, 0.295, 0.285, 0.985, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.23, 0.245, 0.255, 0.3088, 0.285, 0.295, 0.365, 0.415, 0.445, 0.455, 0.455, 0.475, 0.485, 0.455, 0.49, 0.5, 0.505, 0.515, 0.51, 0.495, 0.495, 0.455, 0.455, 0.465, 0.6154, 0.595, 0.655, 0.545, 0.505, 0.505, 0.445, 0.515, 0.4678, 0.545, 0.565, 0.665, 0.735, 0.735, 0.555, 0.685, 0.725, 0.7364, 0.725, 0.695, 0.675, 0.715, 0.005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [30, 0.455]}]}]}); charts.push(cc20_1);
+var cc20_2 = echarts.init(document.getElementById('case-chart-20-2')); cc20_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0925, 0.0925, 0.0785, 0.074, 0.0725, 0.0705, 0.065, 0.0834, 0.0997, 0.0925, 0.0836, 0.0759, 0.0686, 0.0695, 0.0705, 0.0715, 0.0725, 0.0595, 0.0531, 0.0465, 0.0384, 0.0388, 0.0365, 0.037, 0.032, 0.0315, 0.0935, 0.0725, 0.4015, 0.3245, 0.3451, 0.322, 0.2908, 0.2885, 0.3645, 0.3515, 0.4995, 0.6075, 0.571, 0.4664, 0.3435, 0.4105, 0.3805, 0.281, 0.1945, 0.4215, 0.9835, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.3605, 0.341, 0.3225, 0.3105, 0.2535, 0.2295, 0.211, 0.3025, 0.365, 0.376, 0.3885, 0.3722, 0.382, 0.3995, 0.4215, 0.411, 0.424, 0.408, 0.4005, 0.383, 0.4112, 0.3716, 0.3685, 0.3325, 0.347, 0.2915, 0.5615, 0.696, 0.4735, 0.5585, 0.5708, 0.6165, 0.6255, 0.6355, 0.5695, 0.589, 0.4015, 0.3245, 0.3895, 0.498, 0.6155, 0.566, 0.6185, 0.699, 0.8095, 0.5795, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [36, 0.4995]}]}]}); charts.push(cc20_2);
+var cc20_3 = echarts.init(document.getElementById('case-chart-20-3')); cc20_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.415, 0.395, 0.385, 0.345, 0.345, 0.345, 0.345, 0.4137, 0.3707, 0.355, 0.335, 0.325, 0.365, 0.3531, 0.3276, 0.365, 0.305, 0.275, 0.275, 0.285, 0.285, 0.285, 0.265, 0.255, 0.255, 0.425, 0.515, 0.545, 0.575, 0.585, 0.655, 0.6639, 0.725, 0.69, 0.675, 0.635, 0.72, 0.635, 0.735, 0.59, 0.575, 0.625, 0.675, 0.645, 0.605, 0.575, 0.355, 0.995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.325, 0.375, 0.345, 0.365, 0.3911, 0.395, 0.395, 0.335, 0.415, 0.425, 0.4563, 0.475, 0.455, 0.455, 0.475, 0.485, 0.555, 0.595, 0.585, 0.575, 0.555, 0.585, 0.585, 0.605, 0.6614, 0.495, 0.3912, 0.385, 0.355, 0.325, 0.175, 0.2105, 0.2, 0.2174, 0.265, 0.315, 0.235, 0.3244, 0.22, 0.38, 0.405, 0.365, 0.315, 0.325, 0.3882, 0.425, 0.615, 0.005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [26, 0.515]}]}]}); charts.push(cc20_3);var cc21_0 = echarts.init(document.getElementById('case-chart-21-0')); cc21_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.235, 0.2397, 0.319, 0.327, 0.285, 0.0948, 0.115, 0.105, 0.1024, 0.125, 0.0446, 0.0301, 0.0425, 0.0725, 0.0864, 0.0205, 0.0122, 0.0224, 0.0329, 0.0285, 0.0368, 0.043, 0.0517, 0.0595, 0.0671, 0.0719, 0.0726, 0.1048, 0.073, 0.0935, 0.112, 0.0205, 0.0201, 0.0131, 0.0093, 0.0077, 0.0191, 0.0435, 0.0225, 0.0674, 0.1553, 0.109, 0.1624, 0.1803, 0.212, 0.3718, 0.6562, 0.764]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.108, 0.0939, 0.2122, 0.2782, 0.272, 0.2169, 0.2115, 0.2012, 0.2291, 0.2477, 0.1573, 0.1679, 0.21, 0.246, 0.2435, 0.1825, 0.1965, 0.2864, 0.2641, 0.2685, 0.2923, 0.2986, 0.2915, 0.356, 0.3833, 0.4643, 0.4739, 0.5339, 0.513, 0.5476, 0.5685, 0.408, 0.42, 0.4151, 0.4272, 0.4914, 0.5318, 0.5795, 0.628, 0.7289, 0.7017, 0.7185, 0.752, 0.7055, 0.7148, 0.5669, 0.3409, 0.2365]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [26, 0.0726]}]}]}); charts.push(cc21_0);
+var cc21_1 = echarts.init(document.getElementById('case-chart-21-1')); cc21_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0585, 0.0835, 0.0813, 0.0775, 0.0955, 0.0905, 0.0815, 0.0845, 0.0705, 0.1045, 0.2067, 0.2205, 0.2255, 0.3141, 0.2945, 0.2945, 0.349, 0.3535, 0.3335, 0.3265, 0.3215, 0.3305, 0.3605, 0.461, 0.4285, 0.411, 0.358, 0.351, 0.3286, 0.3134, 0.3145, 0.3184, 0.3115, 0.4025, 0.3875, 0.3545, 0.3145, 0.2505, 0.2315, 0.2105, 0.22, 0.202, 0.1865, 0.1507, 0.1267, 0.7895, 0.9855, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.204, 0.274, 0.2755, 0.2905, 0.3395, 0.3195, 0.3095, 0.303, 0.3127, 0.3255, 0.3846, 0.385, 0.427, 0.4122, 0.42, 0.4575, 0.3915, 0.4025, 0.4565, 0.4565, 0.472, 0.4645, 0.4325, 0.3185, 0.3315, 0.346, 0.4325, 0.4485, 0.4735, 0.5152, 0.5215, 0.5159, 0.5655, 0.459, 0.5335, 0.5905, 0.6495, 0.7365, 0.7445, 0.7585, 0.7713, 0.802, 0.808, 0.8397, 0.8676, 0.1735, 0.0005, 0.0]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [26, 0.358]}]}]}); charts.push(cc21_1);
+var cc21_2 = echarts.init(document.getElementById('case-chart-21-2')); cc21_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0925, 0.0925, 0.0785, 0.074, 0.0725, 0.0705, 0.065, 0.0834, 0.0997, 0.0925, 0.0836, 0.0759, 0.0686, 0.0695, 0.0705, 0.0715, 0.0725, 0.0595, 0.0531, 0.0465, 0.0384, 0.0388, 0.0365, 0.037, 0.032, 0.0315, 0.0935, 0.0725, 0.4015, 0.3245, 0.3451, 0.322, 0.2908, 0.2885, 0.3645, 0.3515, 0.4995, 0.6075, 0.571, 0.4664, 0.3435, 0.4105, 0.3805, 0.281, 0.1945, 0.4215, 0.9835, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.3605, 0.341, 0.3225, 0.3105, 0.2535, 0.2295, 0.211, 0.3025, 0.365, 0.376, 0.3885, 0.3722, 0.382, 0.3995, 0.4215, 0.411, 0.424, 0.408, 0.4005, 0.383, 0.4112, 0.3716, 0.3685, 0.3325, 0.347, 0.2915, 0.5615, 0.696, 0.4735, 0.5585, 0.5708, 0.6165, 0.6255, 0.6355, 0.5695, 0.589, 0.4015, 0.3245, 0.3895, 0.498, 0.6155, 0.566, 0.6185, 0.699, 0.8095, 0.5795, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [28, 0.4015]}]}]}); charts.push(cc21_2);
+var cc21_3 = echarts.init(document.getElementById('case-chart-21-3')); cc21_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：后发制人", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.08, 0.085, 0.105, 0.1144, 0.085, 0.095, 0.12, 0.235, 0.205, 0.175, 0.18, 0.175, 0.245, 0.295, 0.245, 0.195, 0.175, 0.135, 0.125, 0.125, 0.125, 0.125, 0.105, 0.135, 0.2297, 0.285, 0.215, 0.405, 0.385, 0.445, 0.455, 0.405, 0.465, 0.395, 0.375, 0.335, 0.2777, 0.265, 0.445, 0.275, 0.255, 0.2387, 0.295, 0.295, 0.295, 0.285, 0.985, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.23, 0.245, 0.255, 0.3088, 0.285, 0.295, 0.365, 0.415, 0.445, 0.455, 0.455, 0.475, 0.485, 0.455, 0.49, 0.5, 0.505, 0.515, 0.51, 0.495, 0.495, 0.455, 0.455, 0.465, 0.6154, 0.595, 0.655, 0.545, 0.505, 0.505, 0.445, 0.515, 0.4678, 0.545, 0.565, 0.665, 0.735, 0.735, 0.555, 0.685, 0.725, 0.7364, 0.725, 0.695, 0.675, 0.715, 0.005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [27, 0.405]}]}]}); charts.push(cc21_3);var cc22_0 = echarts.init(document.getElementById('case-chart-22-0')); cc22_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0585, 0.0835, 0.0813, 0.0775, 0.0955, 0.0905, 0.0815, 0.0845, 0.0705, 0.1045, 0.2067, 0.2205, 0.2255, 0.3141, 0.2945, 0.2945, 0.349, 0.3535, 0.3335, 0.3265, 0.3215, 0.3305, 0.3605, 0.461, 0.4285, 0.411, 0.358, 0.351, 0.3286, 0.3134, 0.3145, 0.3184, 0.3115, 0.4025, 0.3875, 0.3545, 0.3145, 0.2505, 0.2315, 0.2105, 0.22, 0.202, 0.1865, 0.1507, 0.1267, 0.7895, 0.9855, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.204, 0.274, 0.2755, 0.2905, 0.3395, 0.3195, 0.3095, 0.303, 0.3127, 0.3255, 0.3846, 0.385, 0.427, 0.4122, 0.42, 0.4575, 0.3915, 0.4025, 0.4565, 0.4565, 0.472, 0.4645, 0.4325, 0.3185, 0.3315, 0.346, 0.4325, 0.4485, 0.4735, 0.5152, 0.5215, 0.5159, 0.5655, 0.459, 0.5335, 0.5905, 0.6495, 0.7365, 0.7445, 0.7585, 0.7713, 0.802, 0.808, 0.8397, 0.8676, 0.1735, 0.0005, 0.0]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [24, 0.4285]}]}]}); charts.push(cc22_0);
+var cc22_1 = echarts.init(document.getElementById('case-chart-22-1')); cc22_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.355, 0.345, 0.355, 0.3871, 0.385, 0.385, 0.3907, 0.385, 0.395, 0.395, 0.385, 0.395, 0.405, 0.3824, 0.335, 0.355, 0.3897, 0.405, 0.4278, 0.405, 0.4541, 0.445, 0.455, 0.475, 0.471, 0.495, 0.5201, 0.5641, 0.5318, 0.5722, 0.5563, 0.575, 0.615, 0.6116, 0.605, 0.605, 0.6105, 0.635, 0.6514, 0.645, 0.675, 0.675, 0.1164, 0.3412, 0.6593, 0.7536, 0.911, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.205, 0.215, 0.205, 0.2429, 0.2488, 0.215, 0.245, 0.225, 0.215, 0.2182, 0.2354, 0.2405, 0.2813, 0.3076, 0.355, 0.3344, 0.2906, 0.2406, 0.3128, 0.365, 0.385, 0.355, 0.355, 0.355, 0.345, 0.325, 0.2748, 0.2546, 0.3094, 0.295, 0.3137, 0.2797, 0.2644, 0.2683, 0.2973, 0.2507, 0.2467, 0.2163, 0.2114, 0.205, 0.175, 0.2052, 0.6544, 0.6093, 0.3168, 0.2164, 0.0731, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [25, 0.495]}]}]}); charts.push(cc22_1);
+var cc22_2 = echarts.init(document.getElementById('case-chart-22-2')); cc22_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.395, 0.385, 0.385, 0.435, 0.395, 0.395, 0.375, 0.375, 0.3867, 0.375, 0.405, 0.3903, 0.335, 0.3878, 0.3985, 0.425, 0.375, 0.465, 0.455, 0.445, 0.435, 0.475, 0.485, 0.4901, 0.5001, 0.555, 0.57, 0.5771, 0.605, 0.605, 0.595, 0.5833, 0.615, 0.598, 0.625, 0.5702, 0.5973, 0.595, 0.6269, 0.6307, 0.668, 0.625, 0.595, 0.5659, 0.575, 0.505, 0.5348, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.235, 0.235, 0.255, 0.2553, 0.2904, 0.295, 0.325, 0.335, 0.335, 0.345, 0.305, 0.3273, 0.355, 0.2578, 0.1561, 0.1582, 0.085, 0.105, 0.1012, 0.095, 0.085, 0.095, 0.075, 0.0824, 0.1001, 0.1256, 0.1428, 0.1278, 0.145, 0.155, 0.13, 0.1333, 0.1282, 0.1385, 0.125, 0.1027, 0.1327, 0.1135, 0.1831, 0.1828, 0.1763, 0.305, 0.3266, 0.3541, 0.355, 0.47, 0.4453, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [24, 0.5001]}]}]}); charts.push(cc22_2);
+var cc22_3 = echarts.init(document.getElementById('case-chart-22-3')); cc22_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：走势分化", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.28, 0.305, 0.325, 0.325, 0.325, 0.325, 0.345, 0.355, 0.3469, 0.355, 0.365, 0.375, 0.365, 0.385, 0.365, 0.341, 0.345, 0.395, 0.435, 0.445, 0.455, 0.4624, 0.465, 0.475, 0.5065, 0.515, 0.5224, 0.545, 0.545, 0.555, 0.535, 0.5185, 0.565, 0.535, 0.4837, 0.475, 0.43, 0.475, 0.5514, 0.635, 0.6704, 0.695, 0.7001, 0.7093, 0.815, 0.905, 0.9485, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.2805, 0.26, 0.272, 0.243, 0.2455, 0.2405, 0.2319, 0.2135, 0.1918, 0.2405, 0.2136, 0.2125, 0.2125, 0.2055, 0.1885, 0.1755, 0.1636, 0.236, 0.1971, 0.1775, 0.1806, 0.2305, 0.1985, 0.2375, 0.1784, 0.1925, 0.228, 0.2035, 0.1845, 0.164, 0.1557, 0.1505, 0.1635, 0.1505, 0.3279, 0.3645, 0.4235, 0.4415, 0.3666, 0.2845, 0.2645, 0.2454, 0.2545, 0.234, 0.16, 0.0914, 0.0445, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [24, 0.5065]}]}]}); charts.push(cc22_3);
+    </script>
+    
+    <section class="window-section" id="window-24-48h">
+      <div class="window-header">
+        <h2>24-48h 窗口：结算前 24~48 小时</h2>
+        <span class="window-badge">18 个市场</span>
+      </div>
+
+      <div class="insight">
+        <h3>关键发现</h3>
+        <ul>
+          <li>最佳规则：<strong>current_and_recent_leader（强者恒强）</strong>，胜率 55.6%，平均盈亏 11.6%。</li>
+          <li>按期望值排名前三：current_and_recent_leader（强者恒强）, momentum_catcher（后发制人）, acceleration（加速领先）。</li>
+          <li>按胜率排名前三：current_and_recent_leader（55.6%）, acceleration（46.2%）, divergence（41.2%）。</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h3>交易策略说明</h3>
+        
+    <p><strong>窗口：</strong>结算前 24~48 小时。此阶段最佳形态信号为 <span class="hl">current_and_recent_leader（强者恒强）</span>，
+    共产生 18 笔交易，胜率 55.6%，平均盈亏 11.6%，盈亏比 1.61，期望值 11.6%。</p>
+    <p><strong>策略含义：</strong>当前价格更高，且最近12h均价也更高。 在 结算前 24~48 小时 这一时间段内，该形态最能识别出最终的王牌区。</p>
+    
+      </div>
+
+      <div class="section">
+        <h3>买入依据</h3>
+        
+    <ul>
+      <li><strong>买入形态：</strong>当王牌区与准王牌区之间出现 <em>强者恒强</em> 形态时触发买入。</li>
+      <li><strong>买入方向：</strong>买入形态上占优的一方（本窗口为 current_and_recent_leader 所选方向）。</li>
+      <li><strong>买入价格：</strong>信号触发时刻该区间的实时 price_yes。</li>
+      <li><strong>买入时间：</strong>限制在结算前 24~48 小时之间首次触发。</li>
+      <li><strong>持有方式：</strong>First Signal 模式，每个市场每个规则只买入一次并持有到结算。</li>
+    </ul>
+    
+      </div>
+
+      <div class="section">
+        <h3>典型交易案例</h3>
+        <p class="note">黄色圆点标注买入点，绿色线为最终落点的王牌区，红色线为最强竞争者（准王牌区）。每个分组优先展示盈利案例，再补充亏损案例，且同一市场不重复出现。</p>
+        
+    <div class="rule-group">
+      <h4>current_and_recent_leader · 强者恒强</h4>
+      <p class="rule-desc">当前价格更高，且最近12h均价也更高。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-17-april-24</h4>
+            <span class="badge win">盈利 · PnL 68.1%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">200-219</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.319</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">36h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+12.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+32.4%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 36 小时时，王牌区 当前价格 0.319 高于 准王牌区 的 0.074，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.319 的价格买入 200-219。</div>
+          <div id="case-chart-30-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-12-may-19</h4>
+            <span class="badge win">盈利 · PnL 63.7%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.363</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">36h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+111.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+111.9%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 36 小时时，王牌区 当前价格 0.363 高于 准王牌区 的 0.066，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.363 的价格买入 220-239。</div>
+          <div id="case-chart-30-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-10-april-17</h4>
+            <span class="badge win">盈利 · PnL 63.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">300-319</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.365</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">36h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+19.7%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-18.3%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 36 小时时，王牌区 当前价格 0.365 高于 准王牌区 的 0.212，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.365 的价格买入 300-319。</div>
+          <div id="case-chart-30-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-3-april-10</h4>
+            <span class="badge win">盈利 · PnL 61.2%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">240-259</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.388</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">35h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+0.7%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+1.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 35 小时时，王牌区 当前价格 0.388 高于 准王牌区 的 0.258，且 12h 均价也领先，呈现“强者恒强”形态，触发 current_and_recent_leader 买入信号，因此以 0.388 的价格买入 240-259。</div>
+          <div id="case-chart-30-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>breakout · 突破反超</h4>
+      <p class="rule-desc">6h前落后，当前反超，且6h涨幅>20%。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-15-may-22</h4>
+            <span class="badge win">盈利 · PnL 53.9%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">280-299</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.461</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">25h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+104.4%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-25.4%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 25 小时时，王牌区 当前价格 0.461 反超 准王牌区 的 0.319，且最近 6h 收益 +38.2% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.461 的价格买入 280-299。</div>
+          <div id="case-chart-31-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-3-april-10</h4>
+            <span class="badge win">盈利 · PnL 53.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">240-259</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.465</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">31h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+24.0%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-67.7%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 31 小时时，王牌区 当前价格 0.465 反超 准王牌区 的 0.105，且最近 6h 收益 +38.8% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.465 的价格买入 240-259。</div>
+          <div id="case-chart-31-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-22-may-29</h4>
+            <span class="badge loss">亏损 · PnL -56.6%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">160-179</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.566</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">32h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-25.7%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+156.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 32 小时时，准王牌区 当前价格 0.566 反超 王牌区 的 0.355，且最近 6h 收益 +117.3% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.566 的价格买入 160-179。</div>
+          <div id="case-chart-31-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-june-12-june-19</h4>
+            <span class="badge loss">亏损 · PnL -49.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">200-219</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.495</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">36h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">-10.1%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+32.0%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 36 小时时，准王牌区 当前价格 0.495 反超 王牌区 的 0.355，且最近 6h 收益 +28.6% 超过 20%，呈现“突破反超”形态，触发 breakout 买入信号，因此以 0.495 的价格买入 200-219。</div>
+          <div id="case-chart-31-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+    <div class="rule-group">
+      <h4>stable_spread · 优势稳定</h4>
+      <p class="rule-desc">当前领先且最近24h收益也领先。</p>
+      
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-17-april-24</h4>
+            <span class="badge win">盈利 · PnL 68.1%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">200-219</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.319</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">36h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+12.2%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+32.4%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 36 小时时，王牌区 当前价格 0.319 高于 准王牌区 的 0.074，且最近 24h 收益 +0.8% 也高于 准王牌区 的 -29.0%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.319 的价格买入 200-219。</div>
+          <div id="case-chart-32-0" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-may-12-may-19</h4>
+            <span class="badge win">盈利 · PnL 65.6%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">220-239</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.344</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">35h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+120.9%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+131.9%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 35 小时时，王牌区 当前价格 0.344 高于 准王牌区 的 0.054，且最近 24h 收益 +119.5% 也高于 准王牌区 的 +113.7%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.344 的价格买入 220-239。</div>
+          <div id="case-chart-32-1" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-april-10-april-17</h4>
+            <span class="badge win">盈利 · PnL 63.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">300-319</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.365</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">36h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+19.7%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">-18.3%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 36 小时时，王牌区 当前价格 0.365 高于 准王牌区 的 0.212，且最近 24h 收益 +30.4% 也高于 准王牌区 的 -24.2%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.365 的价格买入 300-319。</div>
+          <div id="case-chart-32-2" class="chart"></div>
+        </div>
+        
+
+        <div class="market-card">
+          <div class="market-header">
+            <h4>elon-musk-of-tweets-march-27-april-3</h4>
+            <span class="badge win">盈利 · PnL 59.5%</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="label">买入区间</div><div class="value">260-279</div></div>
+            <div class="metric"><div class="label">买入价</div><div class="value">0.405</div></div>
+            <div class="metric"><div class="label">距结算</div><div class="value">36h</div></div>
+            <div class="metric"><div class="label">王牌区12h收益</div><div class="value">+7.1%</div></div>
+            <div class="metric"><div class="label">准王牌区12h收益</div><div class="value">+2.1%</div></div>
+          </div>
+          <div class="buy-reason">在距结算约 36 小时时，王牌区 当前价格 0.405 高于 准王牌区 的 0.245，且最近 24h 收益 +37.3% 也高于 准王牌区 的 -22.2%，优势稳定，呈现“优势稳定”形态，触发 stable_spread 买入信号，因此以 0.405 的价格买入 260-279。</div>
+          <div id="case-chart-32-3" class="chart"></div>
+        </div>
+        
+    </div>
+    
+      </div>
+    </section>
+
+    <script>
+    var cc30_0 = echarts.init(document.getElementById('case-chart-30-0')); cc30_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.3165, 0.2845, 0.2738, 0.2975, 0.3143, 0.3196, 0.3185, 0.3185, 0.3335, 0.291, 0.2995, 0.3065, 0.3192, 0.3135, 0.323, 0.4105, 0.3691, 0.3747, 0.4135, 0.4343, 0.4345, 0.428, 0.494, 0.4897, 0.5565, 0.5618, 0.576, 0.5805, 0.5595, 0.6335, 0.602, 0.651, 0.6733, 0.6345, 0.5325, 0.49, 0.437, 0.454, 0.4605, 0.4725, 0.446, 0.429, 0.4097, 0.4172, 0.3926, 0.2725, 0.159, 0.998]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.1045, 0.056, 0.0437, 0.0595, 0.0655, 0.0685, 0.0765, 0.0887, 0.0895, 0.0625, 0.058, 0.062, 0.0742, 0.048, 0.0591, 0.063, 0.0528, 0.0209, 0.0413, 0.0286, 0.0267, 0.0265, 0.0475, 0.0755, 0.0935, 0.1016, 0.1105, 0.1335, 0.1835, 0.2187, 0.2815, 0.2005, 0.2308, 0.3445, 0.397, 0.4455, 0.49, 0.4655, 0.478, 0.485, 0.549, 0.5235, 0.5475, 0.5732, 0.5882, 0.6995, 0.843, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [12, 0.3192]}]}]}); charts.push(cc30_0);
+var cc30_1 = echarts.init(document.getElementById('case-chart-30-1')); cc30_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.1565, 0.1721, 0.1555, 0.123, 0.1224, 0.109, 0.1075, 0.1095, 0.1075, 0.1105, 0.228, 0.3295, 0.363, 0.3435, 0.2785, 0.328, 0.523, 0.559, 0.546, 0.5135, 0.5225, 0.5245, 0.5355, 0.5325, 0.3785, 0.3765, 0.4319, 0.5095, 0.507, 0.3395, 0.3385, 0.3152, 0.381, 0.4715, 0.411, 0.4335, 0.4555, 0.5475, 0.5405, 0.7145, 0.7913, 0.794, 0.7799, 0.8155, 0.8535, 0.9335, 0.9781, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.0255, 0.0309, 0.0235, 0.0225, 0.0215, 0.0255, 0.0215, 0.0239, 0.0215, 0.0175, 0.0355, 0.0635, 0.0655, 0.0545, 0.0385, 0.0535, 0.163, 0.1725, 0.1635, 0.147, 0.15, 0.1805, 0.1945, 0.3195, 0.417, 0.421, 0.3787, 0.3265, 0.3395, 0.4615, 0.4655, 0.4842, 0.4745, 0.4595, 0.5005, 0.5065, 0.479, 0.4105, 0.4035, 0.2578, 0.1832, 0.195, 0.1943, 0.1705, 0.132, 0.0695, 0.0203, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [12, 0.363]}]}]}); charts.push(cc30_1);
+var cc30_2 = echarts.init(document.getElementById('case-chart-30-2')); cc30_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.28, 0.305, 0.325, 0.325, 0.325, 0.325, 0.345, 0.355, 0.3469, 0.355, 0.365, 0.375, 0.365, 0.385, 0.365, 0.341, 0.345, 0.395, 0.435, 0.445, 0.455, 0.4624, 0.465, 0.475, 0.5065, 0.515, 0.5224, 0.545, 0.545, 0.555, 0.535, 0.5185, 0.565, 0.535, 0.4837, 0.475, 0.43, 0.475, 0.5514, 0.635, 0.6704, 0.695, 0.7001, 0.7093, 0.815, 0.905, 0.9485, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.2805, 0.26, 0.272, 0.243, 0.2455, 0.2405, 0.2319, 0.2135, 0.1918, 0.2405, 0.2136, 0.2125, 0.2125, 0.2055, 0.1885, 0.1755, 0.1636, 0.236, 0.1971, 0.1775, 0.1806, 0.2305, 0.1985, 0.2375, 0.1784, 0.1925, 0.228, 0.2035, 0.1845, 0.164, 0.1557, 0.1505, 0.1635, 0.1505, 0.3279, 0.3645, 0.4235, 0.4415, 0.3666, 0.2845, 0.2645, 0.2454, 0.2545, 0.234, 0.16, 0.0914, 0.0445, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [12, 0.365]}]}]}); charts.push(cc30_2);
+var cc30_3 = echarts.init(document.getElementById('case-chart-30-3')); cc30_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：强者恒强", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.395, 0.385, 0.385, 0.435, 0.395, 0.395, 0.375, 0.375, 0.3867, 0.375, 0.405, 0.3903, 0.335, 0.3878, 0.3985, 0.425, 0.375, 0.465, 0.455, 0.445, 0.435, 0.475, 0.485, 0.4901, 0.5001, 0.555, 0.57, 0.5771, 0.605, 0.605, 0.595, 0.5833, 0.615, 0.598, 0.625, 0.5702, 0.5973, 0.595, 0.6269, 0.6307, 0.668, 0.625, 0.595, 0.5659, 0.575, 0.505, 0.5348, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.235, 0.235, 0.255, 0.2553, 0.2904, 0.295, 0.325, 0.335, 0.335, 0.345, 0.305, 0.3273, 0.355, 0.2578, 0.1561, 0.1582, 0.085, 0.105, 0.1012, 0.095, 0.085, 0.095, 0.075, 0.0824, 0.1001, 0.1256, 0.1428, 0.1278, 0.145, 0.155, 0.13, 0.1333, 0.1282, 0.1385, 0.125, 0.1027, 0.1327, 0.1135, 0.1831, 0.1828, 0.1763, 0.305, 0.3266, 0.3541, 0.355, 0.47, 0.4453, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [13, 0.3878]}]}]}); charts.push(cc30_3);var cc31_0 = echarts.init(document.getElementById('case-chart-31-0')); cc31_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.0585, 0.0835, 0.0813, 0.0775, 0.0955, 0.0905, 0.0815, 0.0845, 0.0705, 0.1045, 0.2067, 0.2205, 0.2255, 0.3141, 0.2945, 0.2945, 0.349, 0.3535, 0.3335, 0.3265, 0.3215, 0.3305, 0.3605, 0.461, 0.4285, 0.411, 0.358, 0.351, 0.3286, 0.3134, 0.3145, 0.3184, 0.3115, 0.4025, 0.3875, 0.3545, 0.3145, 0.2505, 0.2315, 0.2105, 0.22, 0.202, 0.1865, 0.1507, 0.1267, 0.7895, 0.9855, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.204, 0.274, 0.2755, 0.2905, 0.3395, 0.3195, 0.3095, 0.303, 0.3127, 0.3255, 0.3846, 0.385, 0.427, 0.4122, 0.42, 0.4575, 0.3915, 0.4025, 0.4565, 0.4565, 0.472, 0.4645, 0.4325, 0.3185, 0.3315, 0.346, 0.4325, 0.4485, 0.4735, 0.5152, 0.5215, 0.5159, 0.5655, 0.459, 0.5335, 0.5905, 0.6495, 0.7365, 0.7445, 0.7585, 0.7713, 0.802, 0.808, 0.8397, 0.8676, 0.1735, 0.0005, 0.0]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [23, 0.461]}]}]}); charts.push(cc31_0);
+var cc31_1 = echarts.init(document.getElementById('case-chart-31-1')); cc31_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.395, 0.385, 0.385, 0.435, 0.395, 0.395, 0.375, 0.375, 0.3867, 0.375, 0.405, 0.3903, 0.335, 0.3878, 0.3985, 0.425, 0.375, 0.465, 0.455, 0.445, 0.435, 0.475, 0.485, 0.4901, 0.5001, 0.555, 0.57, 0.5771, 0.605, 0.605, 0.595, 0.5833, 0.615, 0.598, 0.625, 0.5702, 0.5973, 0.595, 0.6269, 0.6307, 0.668, 0.625, 0.595, 0.5659, 0.575, 0.505, 0.5348, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.235, 0.235, 0.255, 0.2553, 0.2904, 0.295, 0.325, 0.335, 0.335, 0.345, 0.305, 0.3273, 0.355, 0.2578, 0.1561, 0.1582, 0.085, 0.105, 0.1012, 0.095, 0.085, 0.095, 0.075, 0.0824, 0.1001, 0.1256, 0.1428, 0.1278, 0.145, 0.155, 0.13, 0.1333, 0.1282, 0.1385, 0.125, 0.1027, 0.1327, 0.1135, 0.1831, 0.1828, 0.1763, 0.305, 0.3266, 0.3541, 0.355, 0.47, 0.4453, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [17, 0.465]}]}]}); charts.push(cc31_1);
+var cc31_2 = echarts.init(document.getElementById('case-chart-31-2')); cc31_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.5115, 0.485, 0.4815, 0.4765, 0.4769, 0.4775, 0.4785, 0.5227, 0.5075, 0.4945, 0.5255, 0.5475, 0.5425, 0.4925, 0.4795, 0.5315, 0.355, 0.345, 0.3865, 0.372, 0.4045, 0.4125, 0.3995, 0.3865, 0.323, 0.295, 0.263, 0.2005, 0.286, 0.2775, 0.2355, 0.2206, 0.2775, 0.2264, 0.2405, 0.2125, 0.1845, 0.1795, 0.1455, 0.1315, 0.3315, 0.2885, 0.4685, 0.2935, 0.2925, 0.293, 0.984, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.1285, 0.2115, 0.2185, 0.2325, 0.2305, 0.221, 0.2755, 0.2315, 0.3095, 0.3455, 0.3185, 0.2605, 0.3355, 0.3905, 0.3995, 0.3775, 0.566, 0.5835, 0.5382, 0.5485, 0.5148, 0.5275, 0.542, 0.5495, 0.5845, 0.6316, 0.6745, 0.7215, 0.675, 0.7035, 0.7125, 0.7505, 0.7025, 0.7665, 0.7495, 0.7835, 0.8095, 0.8165, 0.8555, 0.8495, 0.6045, 0.7095, 0.522, 0.6915, 0.688, 0.71, 0.0005, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [16, 0.566]}]}]}); charts.push(cc31_2);
+var cc31_3 = echarts.init(document.getElementById('case-chart-31-3')); cc31_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：突破反超", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.385, 0.395, 0.375, 0.395, 0.415, 0.435, 0.425, 0.425, 0.4176, 0.415, 0.415, 0.32, 0.355, 0.375, 0.3439, 0.375, 0.435, 0.435, 0.485, 0.495, 0.475, 0.475, 0.485, 0.545, 0.545, 0.615, 0.585, 0.635, 0.655, 0.685, 0.695, 0.695, 0.695, 0.535, 0.5459, 0.505, 0.585, 0.615, 0.6, 0.695, 0.725, 0.69, 0.645, 0.65, 0.675, 0.7547, 0.955, 0.9985]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.385, 0.375, 0.415, 0.415, 0.3763, 0.385, 0.385, 0.385, 0.4299, 0.365, 0.365, 0.475, 0.495, 0.495, 0.4995, 0.5097, 0.475, 0.475, 0.425, 0.425, 0.445, 0.445, 0.435, 0.345, 0.365, 0.235, 0.365, 0.285, 0.255, 0.235, 0.19, 0.21, 0.205, 0.435, 0.3941, 0.475, 0.395, 0.365, 0.385, 0.285, 0.275, 0.295, 0.335, 0.335, 0.325, 0.235, 0.045, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [12, 0.495]}]}]}); charts.push(cc31_3);var cc32_0 = echarts.init(document.getElementById('case-chart-32-0')); cc32_0.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.3165, 0.2845, 0.2738, 0.2975, 0.3143, 0.3196, 0.3185, 0.3185, 0.3335, 0.291, 0.2995, 0.3065, 0.3192, 0.3135, 0.323, 0.4105, 0.3691, 0.3747, 0.4135, 0.4343, 0.4345, 0.428, 0.494, 0.4897, 0.5565, 0.5618, 0.576, 0.5805, 0.5595, 0.6335, 0.602, 0.651, 0.6733, 0.6345, 0.5325, 0.49, 0.437, 0.454, 0.4605, 0.4725, 0.446, 0.429, 0.4097, 0.4172, 0.3926, 0.2725, 0.159, 0.998]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.1045, 0.056, 0.0437, 0.0595, 0.0655, 0.0685, 0.0765, 0.0887, 0.0895, 0.0625, 0.058, 0.062, 0.0742, 0.048, 0.0591, 0.063, 0.0528, 0.0209, 0.0413, 0.0286, 0.0267, 0.0265, 0.0475, 0.0755, 0.0935, 0.1016, 0.1105, 0.1335, 0.1835, 0.2187, 0.2815, 0.2005, 0.2308, 0.3445, 0.397, 0.4455, 0.49, 0.4655, 0.478, 0.485, 0.549, 0.5235, 0.5475, 0.5732, 0.5882, 0.6995, 0.843, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [12, 0.3192]}]}]}); charts.push(cc32_0);
+var cc32_1 = echarts.init(document.getElementById('case-chart-32-1')); cc32_1.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.1565, 0.1721, 0.1555, 0.123, 0.1224, 0.109, 0.1075, 0.1095, 0.1075, 0.1105, 0.228, 0.3295, 0.363, 0.3435, 0.2785, 0.328, 0.523, 0.559, 0.546, 0.5135, 0.5225, 0.5245, 0.5355, 0.5325, 0.3785, 0.3765, 0.4319, 0.5095, 0.507, 0.3395, 0.3385, 0.3152, 0.381, 0.4715, 0.411, 0.4335, 0.4555, 0.5475, 0.5405, 0.7145, 0.7913, 0.794, 0.7799, 0.8155, 0.8535, 0.9335, 0.9781, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.0255, 0.0309, 0.0235, 0.0225, 0.0215, 0.0255, 0.0215, 0.0239, 0.0215, 0.0175, 0.0355, 0.0635, 0.0655, 0.0545, 0.0385, 0.0535, 0.163, 0.1725, 0.1635, 0.147, 0.15, 0.1805, 0.1945, 0.3195, 0.417, 0.421, 0.3787, 0.3265, 0.3395, 0.4615, 0.4655, 0.4842, 0.4745, 0.4595, 0.5005, 0.5065, 0.479, 0.4105, 0.4035, 0.2578, 0.1832, 0.195, 0.1943, 0.1705, 0.132, 0.0695, 0.0203, 0.0015]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [13, 0.3435]}]}]}); charts.push(cc32_1);
+var cc32_2 = echarts.init(document.getElementById('case-chart-32-2')); cc32_2.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.28, 0.305, 0.325, 0.325, 0.325, 0.325, 0.345, 0.355, 0.3469, 0.355, 0.365, 0.375, 0.365, 0.385, 0.365, 0.341, 0.345, 0.395, 0.435, 0.445, 0.455, 0.4624, 0.465, 0.475, 0.5065, 0.515, 0.5224, 0.545, 0.545, 0.555, 0.535, 0.5185, 0.565, 0.535, 0.4837, 0.475, 0.43, 0.475, 0.5514, 0.635, 0.6704, 0.695, 0.7001, 0.7093, 0.815, 0.905, 0.9485, 0.9995]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.2805, 0.26, 0.272, 0.243, 0.2455, 0.2405, 0.2319, 0.2135, 0.1918, 0.2405, 0.2136, 0.2125, 0.2125, 0.2055, 0.1885, 0.1755, 0.1636, 0.236, 0.1971, 0.1775, 0.1806, 0.2305, 0.1985, 0.2375, 0.1784, 0.1925, 0.228, 0.2035, 0.1845, 0.164, 0.1557, 0.1505, 0.1635, 0.1505, 0.3279, 0.3645, 0.4235, 0.4415, 0.3666, 0.2845, 0.2645, 0.2454, 0.2545, 0.234, 0.16, 0.0914, 0.0445, 0.0005]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [12, 0.365]}]}]}); charts.push(cc32_2);
+var cc32_3 = echarts.init(document.getElementById('case-chart-32-3')); cc32_3.setOption({"backgroundColor": "transparent", "title": {"text": "买入信号：优势稳定", "left": "center", "textStyle": {"color": "#e0e0e0", "fontSize": 12}}, "tooltip": {"trigger": "axis"}, "legend": {"bottom": 0, "textStyle": {"color": "#b0b0b0"}}, "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "15%", "containLabel": true}, "xAxis": {"type": "category", "boundaryGap": false, "data": ["-48h", "-47h", "-46h", "-45h", "-44h", "-43h", "-42h", "-41h", "-40h", "-39h", "-38h", "-37h", "-36h", "-35h", "-34h", "-33h", "-32h", "-31h", "-30h", "-29h", "-28h", "-27h", "-26h", "-25h", "-24h", "-23h", "-22h", "-21h", "-20h", "-19h", "-18h", "-17h", "-16h", "-15h", "-14h", "-13h", "-12h", "-11h", "-10h", "-9h", "-8h", "-7h", "-6h", "-5h", "-4h", "-3h", "-2h", "-1h"], "axisLabel": {"color": "#888"}, "axisLine": {"lineStyle": {"color": "#444"}}}, "yAxis": {"type": "value", "min": 0, "max": 1, "axisLabel": {"color": "#888"}, "splitLine": {"lineStyle": {"color": "#333"}}}, "series": [{"name": "王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#00d4aa"}, "data": [0.295, 0.378, 0.3697, 0.38, 0.3644, 0.3982, 0.41, 0.4368, 0.4306, 0.4439, 0.4333, 0.415, 0.405, 0.395, 0.415, 0.4076, 0.2788, 0.33, 0.365, 0.345, 0.3418, 0.3196, 0.2907, 0.245, 0.205, 0.185, 0.1359, 0.1068, 0.1328, 0.1779, 0.2303, 0.145, 0.125, 0.1336, 0.135, 0.129, 0.1207, 0.135, 0.1861, 0.2274, 0.4418, 0.5261, 0.7051, 0.704, 0.739, 0.0961, 0.6314, 0.988]}, {"name": "准王牌区", "type": "line", "smooth": true, "showSymbol": false, "lineStyle": {"width": 2, "color": "#ff6b6b"}, "data": [0.315, 0.24, 0.26, 0.255, 0.2547, 0.2499, 0.225, 0.2418, 0.2537, 0.2345, 0.225, 0.2193, 0.245, 0.235, 0.225, 0.2076, 0.17, 0.1449, 0.145, 0.135, 0.125, 0.125, 0.1065, 0.085, 0.075, 0.045, 0.0254, 0.0254, 0.0184, 0.0251, 0.0221, 0.0215, 0.029, 0.0175, 0.0175, 0.0189, 0.0125, 0.0138, 0.0203, 0.0189, 0.0546, 0.0631, 0.1424, 0.2709, 0.2357, 0.7166, 0.3615, 0.011]}, {"name": "买入点", "type": "scatter", "symbolSize": 12, "itemStyle": {"color": "#ffd700"}, "data": [{"value": [12, 0.405]}]}]}); charts.push(cc32_3);
+    </script>
+    
+
+    <section id="recommendations" class="section">
+      <h2>统一交易建议</h2>
+      <ul>
+        <li><strong>1-5h</strong>：<em>momentum_catcher（后发制人）</em> 有正期望但优势不大，可作为辅助观察信号。</li><li><strong>10-18h</strong>：使用 <em>stable_spread（优势稳定）</em>，胜率 64.7%，平均盈亏 7.9%，适合作为该时间段的核心策略。</li><li><strong>10-24h</strong>：使用 <em>breakout（突破反超）</em>，胜率 71.4%，平均盈亏 23.8%，适合作为该时间段的核心策略。</li><li><strong>24-48h</strong>：使用 <em>current_and_recent_leader（强者恒强）</em>，胜率 55.6%，平均盈亏 11.6%，适合作为该时间段的核心策略。</li>
+        <li><strong>组合思路：</strong>越远的时间窗口越依赖“突破/反转”类信号；越临近结算，越依赖“趋势确认/强者恒强”类信号。可在不同剩余时间阶段使用对应最佳规则，形成分阶段策略。</li>
+        <li><strong>风险管理：</strong>First Signal 模式每个规则每个市场只买一次，天然限制仓位；建议单笔仓位不超过总资金的 2-5%，并设置最大亏损上限。</li>
+        <li><strong>买入依据：</strong>每次买入必须记录信号名称、触发时两个区间的 12h 收益、买入价格、距结算时间，确保每笔交易都可追溯、可复盘。</li>
+      </ul>
+    </section>
+  </div>
+
+  <script>
+    window.addEventListener('resize', function() { charts.forEach(function(c) { c.resize(); }); });
+  </script>
+</body>
+</html>

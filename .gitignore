@@ -1,0 +1,16 @@
+# esports_monitor
+esports_history.db
+esports_history.db.bak
+*.db.bak
+esports_monitor.log
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+config.yaml
+config.local.yaml
+archives/
+.venv/
+venv/
+*.egg-info/

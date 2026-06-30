@@ -1,0 +1,7 @@
+# esports_monitor 本地机密配置示例
+# 复制为 config.local.yaml 并填入实际机密值；config.local.yaml 已在 .gitignore 中
+
+notification:
+  telegram:
+    bot_token: 'your-bot-token-here'
+    chat_id: 'your-chat-id-here'

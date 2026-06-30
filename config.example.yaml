@@ -1,0 +1,101 @@
+# esports_monitor 配置示例
+# 复制为 config.yaml 后根据需要修改；机密项（telegram bot_token/chat_id）写入 config.local.yaml
+
+# Polymarket API 配置
+polymarket:
+  gamma_api_base: https://gamma-api.polymarket.com
+  clob_api_base: https://clob.polymarket.com
+  timeout: 10
+
+# 市场发现
+discovery:
+  enabled: true
+  games: [cs2, dota2, lol]
+  tag_ids:
+    cs2: ""
+    dota2: ""
+    lol: ""
+  # 多 tag 查询：聚合所有 tag 下的赛事并去重
+  # 注意：cs2 tag 主要是长期预测市场（如"Will s1mple retire?"），
+  # 单场比赛在 counter-strike-2 tag 下；dota2 不存在，须用 dota-2
+  tag_slugs: [counter-strike-2, dota-2, lol, league-of-legends]
+  tag_slug: esports          # 向后兼容（tag_slugs 为空时使用）
+  live_window_hours: 48      # 允许发现未来 N 小时内开始的比赛（API + 客户端双重过滤）
+  max_match_duration_hours: 48  # event 级别最大时长（排除赛季冠军等长期市场，单场赛事周期可能跨天）
+  min_depth: 50             # 买一深度下限（USDC）
+  max_spread: 0.05          # 价差上限
+  price_min: 0.0001         # 极端价格也监控（如 0.0005/0.9995，市场已基本决出胜负但未结算）
+  price_max: 0.9999         # 极端价格也监控
+  interval_hours: 6
+  lookahead_count: 20
+  timeout: 30
+
+# 轮询配置
+polling:
+  interval_seconds: 30       # 赛中轮询间隔
+  idle_interval_seconds: 300 # 非赛中轮询间隔
+
+# 形态分析
+morphology:
+  enabled: true
+  cooldown_minutes: 15       # 每场比赛冷却时间
+  resample_points: 48        # 重采样点数
+  window_hours: 2.0          # 价格序列回溯窗口
+  buy_price_min: 0.05        # 买入价下限
+  buy_price_max: 0.95        # 买入价上限
+  observe_all: true          # 无信号也产生观察记录
+  backtest_dir: docs/backtest_results
+  simulation:
+    enabled: true
+    notional_usd: 100        # 每单投入金额
+    use_depth: true          # 启用盘口深度感知
+  windows:
+    - label: early
+      min_minutes: 0
+      max_minutes: 30
+      rules: [current_and_recent_leader, stable_spread]
+    - label: mid
+      min_minutes: 30
+      max_minutes: 90
+      rules: [breakout, momentum_catcher, divergence]
+    - label: late
+      min_minutes: 90
+      max_minutes: 9999
+      rules: [stable_spread, current_and_recent_leader]
+
+# 电竞实时数据源（预留，第一阶段不可用）
+esports_data:
+  enabled: false
+  provider: null             # null / cito / pandastage
+
+# 通知
+notification:
+  telegram:
+    enabled: true
+    bot_token: ''            # 机密，写入 config.local.yaml
+    chat_id: ''              # 机密，写入 config.local.yaml
+    status_report_enabled: true
+    status_report_interval_hours: 6
+    heartbeat_enabled: true              # P0 主循环心跳（每轮结束发送）
+    discovery_report_enabled: true       # P2 市场发现报告
+    skipped_notify_enabled: true         # P3 形态跳过原因
+    archive_report_enabled: true         # P4 数据归档报告
+
+# 数据保留与归档
+retention:
+  days: 90                   # 热数据保留天数（超过则归档）
+  archive_dir: archives      # 归档文件目录
+  archive_interval_days: 7   # 归档任务执行间隔（天）
+  vacuum_enabled: true       # 归档后是否执行 VACUUM
+  compress: true             # 归档文件是否 gzip 压缩
+
+# 数据库
+database:
+  path: esports_history.db
+
+# 日志
+logging:
+  level: INFO
+  file: esports_monitor.log
+  max_bytes: 10485760        # 10MB
+  backup_count: 5

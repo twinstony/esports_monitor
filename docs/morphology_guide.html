@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>两区间形态手册 · 48小时全周期</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+:root {
+  --bg: #0b0d10; --card: #14171c; --card2: #1a1e26;
+  --accent: #00d4aa; --accent2: #4cc9f0;
+  --red: #ff6b6b; --warn: #ffd700; --muted: #8b9ab0;
+  --border: #2a2f3a; --text: #e0e6f0;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'SF Pro Display', -apple-system, sans-serif; min-height: 100vh; }
+
+header {
+  background: linear-gradient(135deg, #020e0a 0%, #001812 50%, #020d18 100%);
+  border-bottom: 2px solid var(--accent);
+  padding: 22px 40px 18px; position: relative; overflow: hidden;
+}
+header::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 30% 50%, rgba(0,212,170,0.08) 0%, transparent 60%); }
+header h1 { font-size: 1.7rem; font-weight: 700; color: var(--accent); position: relative; }
+header p  { color: var(--muted); font-size: 0.83rem; margin-top: 5px; position: relative; }
+.nav-links { position: absolute; right: 40px; top: 50%; transform: translateY(-50%); display: flex; gap: 10px; z-index: 1; }
+.nav-link { color: var(--muted); text-decoration: none; font-size: 0.79rem; border: 1px solid var(--border); padding: 5px 12px; border-radius: 6px; transition: all .2s; }
+.nav-link:hover { color: var(--accent); border-color: var(--accent); }
+
+main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 60px; }
+
+/* ── QUICK FINDER ── */
+.finder { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px; margin-bottom: 32px; }
+.finder-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; color: var(--accent); text-transform: uppercase; margin-bottom: 14px; }
+.finder-step { display: none; }
+.finder-step.active { display: block; }
+.finder-q { font-size: 0.93rem; font-weight: 600; margin-bottom: 10px; }
+.finder-hint { font-size: 0.78rem; color: var(--muted); margin-bottom: 12px; }
+.f-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.f-btn { padding: 8px 18px; border-radius: 8px; font-size: 0.83rem; font-weight: 600; border: 1px solid var(--border); background: var(--card2); color: var(--muted); cursor: pointer; transition: all .2s; text-align: left; }
+.f-btn:hover { border-color: var(--accent); color: var(--accent); }
+.f-result { margin-top: 14px; padding: 14px 18px; border-radius: 10px; border-left: 4px solid var(--accent); background: rgba(0,212,170,0.06); display: none; }
+.f-result.show { display: block; }
+.f-result-name { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+.f-result-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.6; }
+.f-reset { margin-top: 10px; font-size: 0.78rem; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; display: inline-block; }
+.f-reset:hover { color: var(--accent); }
+
+/* ── SHAPE GRID ── */
+.grid-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 16px; }
+.shape-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+@media(max-width: 760px) { .shape-grid { grid-template-columns: 1fr; } }
+
+.scard { background: var(--card); border: 2px solid var(--border); border-radius: 14px; overflow: hidden; transition: border-color .2s, box-shadow .2s; }
+.scard:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(0,212,170,0.1); }
+.scard.highlight { border-color: var(--accent) !important; box-shadow: 0 0 24px rgba(0,212,170,0.18) !important; }
+
+.scard-head { padding: 14px 18px 8px; display: flex; align-items: flex-start; gap: 12px; }
+.shape-id { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: 800; flex-shrink: 0; }
+.shape-names { flex: 1; }
+.sname-en { font-size: 1rem; font-weight: 700; }
+.sname-zh { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.freq-badge { font-size: 0.72rem; color: var(--muted); border: 1px solid var(--border); padding: 3px 9px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+
+.scard-chart { height: 195px; width: 100%; }
+
+.scard-body { padding: 12px 18px 16px; }
+.feat-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.ft { font-size: 0.74rem; padding: 3px 9px; border-radius: 4px; background: var(--card2); border: 1px solid var(--border); color: var(--muted); }
+.ft.g { border-color: rgba(0,212,170,0.35); color: var(--accent); background: rgba(0,212,170,0.07); }
+.ft.y { border-color: rgba(255,215,0,0.35); color: var(--warn); background: rgba(255,215,0,0.07); }
+.ft.r { border-color: rgba(255,107,107,0.35); color: var(--red); background: rgba(255,107,107,0.07); }
+
+.act { padding: 10px 13px; border-radius: 8px; font-size: 0.81rem; line-height: 1.55; }
+.act strong { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 4px; }
+
+.leg-row { display: flex; gap: 16px; padding: 8px 18px; border-top: 1px solid var(--border); }
+.leg { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--muted); }
+.leg-line { width: 22px; height: 2px; border-radius: 1px; }
+.leg-area { width: 22px; height: 10px; border-radius: 2px; opacity: .6; }
+
+/* ── REFERENCE TABLE ── */
+.ref-section { margin-top: 40px; }
+.ref-section h3 { font-size: 0.8rem; color: var(--muted); font-weight: 600; margin-bottom: 14px; letter-spacing: 0.04em; }
+.ref-table { width: 100%; border-collapse: collapse; font-size: 0.81rem; background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+.ref-table th { padding: 10px 16px; text-align: left; color: var(--muted); font-weight: 600; background: var(--card2); border-bottom: 1px solid var(--border); }
+.ref-table td { padding: 10px 16px; border-bottom: 1px solid rgba(42,47,58,0.6); }
+.ref-table tr:last-child td { border-bottom: none; }
+.ref-table tr:hover td { background: rgba(255,255,255,0.02); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>两区间形态手册 · 48小时全周期</h1>
+  <p>绿色 = 最终王牌区（赢家）· 红色 = 最强竞争者 · 阴影区 = 关键观察窗口 · 数据来自18个真实市场 48 小时曲线</p>
+  <div class="nav-links">
+    <a href="reversal_bet.html" class="nav-link">逆转博弈手册 →</a>
+  </div>
+</header>
+
+<main>
+
+<!-- ── QUICK FINDER ── -->
+<div class="finder">
+  <div class="finder-title">⚡ 快速识别 · 当前是哪种形态？</div>
+
+  <div class="finder-step active" id="fs1">
+    <div class="finder-q">Q1：你关注的区间，当前价格是否 <span style="color:var(--accent)">高于</span> 最强竞争者？</div>
+    <div class="f-row">
+      <button class="f-btn" onclick="fgo('fs2a')">✅ 是，当前我的目标区间更高</button>
+      <button class="f-btn" onclick="fgo('fs2b')">❌ 否，竞争者当前价格更高</button>
+    </div>
+  </div>
+
+  <div class="finder-step" id="fs2a">
+    <div class="finder-q">Q2：竞争者在 <span style="color:var(--warn)">最近8-12小时</span> 是否出现明显追赶？差距比之前缩小超过 0.15？</div>
+    <div class="finder-hint">例：你的区间之前0.60 vs 对手0.12，现在变成0.50 vs 0.45，差距快速收窄</div>
+    <div class="f-row">
+      <button class="f-btn" onclick="fshow('F')">⚠️ 是，对手正在快速拉近差距</button>
+      <button class="f-btn" onclick="fgo('fs3a')">✅ 否，差距稳定或仍在扩大</button>
+    </div>
+  </div>
+
+  <div class="finder-step" id="fs2b">
+    <div class="finder-q">Q2：我的目标区间 <span style="color:var(--warn)">近6小时内</span> 是否有明显追赶势头？（价格在快速向上爬升）</div>
+    <div class="f-row">
+      <button class="f-btn" onclick="fshow('D')">🚀 是，价格在快速追赶，差距缩小中</button>
+      <button class="f-btn" onclick="fshow('E')">💤 否，基本无动静，长期大幅落后</button>
+    </div>
+  </div>
+
+  <div class="finder-step" id="fs3a">
+    <div class="finder-q">Q3：当前的领先状态，是从什么时候建立的？</div>
+    <div class="f-row">
+      <button class="f-btn" onclick="fshow('A')">📈 24小时以上，全程领先，差距稳定</button>
+      <button class="f-btn" onclick="fshow('B')">⚡ 约12-36小时前，之前有短暂拉锯/交叉</button>
+      <button class="f-btn" onclick="fshow('C')">🔄 约6-24小时前刚完成反超</button>
+    </div>
+  </div>
+
+  <div class="f-result" id="f-result">
+    <div class="f-result-name" id="f-rname"></div>
+    <div class="f-result-desc" id="f-rdesc"></div>
+    <span class="f-reset" onclick="freset()">↺ 重新判断</span>
+  </div>
+</div>
+
+<!-- ── SHAPE CARDS ── -->
+<div class="grid-label">六种核心视觉形态 · 真实市场48小时曲线</div>
+<div class="shape-grid">
+
+  <!-- A ─────────────────────────────── -->
+  <div class="scard" id="card-A">
+    <div class="scard-head">
+      <div class="shape-id" style="background:rgba(0,212,170,0.15);color:var(--accent)">A</div>
+      <div class="shape-names">
+        <div class="sname-en">全程碾压型</div>
+        <div class="sname-zh">一方从始至终稳定压制，差距单调扩大</div>
+      </div>
+      <div class="freq-badge">20% · 10例</div>
+    </div>
+    <div class="scard-chart" id="ch-A"></div>
+    <div class="scard-body">
+      <div class="feat-row">
+        <span class="ft g">绿色48h全程领先</span>
+        <span class="ft g">红色持续萎缩</span>
+        <span class="ft g">差距稳步扩大</span>
+        <span class="ft">最确定的形态</span>
+      </div>
+      <div class="act" style="background:rgba(0,212,170,0.07);border-left:3px solid var(--accent)">
+        <strong style="color:var(--accent)">操作参考</strong>
+        任何时间窗口买入目标区间均合理。越早入场成本越低（-48h到-24h价格最低），最后12h仍有机会但绿色已在高位。红色无博弈价值。
+      </div>
+    </div>
+    <div class="leg-row">
+      <div class="leg"><div class="leg-line" style="background:#00d4aa"></div>目标区间</div>
+      <div class="leg"><div class="leg-line" style="background:#ff6b6b"></div>最强竞争者</div>
+      <div class="leg"><div class="leg-area" style="background:rgba(0,212,170,0.25)"></div>末期加速区</div>
+    </div>
+  </div>
+
+  <!-- B ─────────────────────────────── -->
+  <div class="scard" id="card-B">
+    <div class="scard-head">
+      <div class="shape-id" style="background:rgba(76,201,240,0.15);color:var(--accent2)">B</div>
+      <div class="shape-names">
+        <div class="sname-en">快速确立型</div>
+        <div class="sname-zh">初期拉锯竞争，绿色约在-33h前后确立稳定领先</div>
+      </div>
+      <div class="freq-badge">12% · 6例</div>
+    </div>
+    <div class="scard-chart" id="ch-B"></div>
+    <div class="scard-body">
+      <div class="feat-row">
+        <span class="ft">起点两线相近（约0.38-0.42）</span>
+        <span class="ft y">前12-16h短暂拉锯或交叉</span>
+        <span class="ft g">约-33h绿色稳固确立领先</span>
+        <span class="ft g">确立后红色持续萎缩</span>
+      </div>
+      <div class="act" style="background:rgba(76,201,240,0.07);border-left:3px solid var(--accent2)">
+        <strong style="color:var(--accent2)">操作参考</strong>
+        拉锯期（黄色阴影区）不宜重仓，方向未定。待绿色站稳上方并维持2-3小时后入场，确认性最强。一旦确立，历史上极少逆转。
+      </div>
+    </div>
+    <div class="leg-row">
+      <div class="leg"><div class="leg-line" style="background:#00d4aa"></div>目标区间</div>
+      <div class="leg"><div class="leg-line" style="background:#ff6b6b"></div>最强竞争者</div>
+      <div class="leg"><div class="leg-area" style="background:rgba(255,215,0,0.3)"></div>拉锯/确立窗口</div>
+    </div>
+  </div>
+
+  <!-- C ─────────────────────────────── -->
+  <div class="scard" id="card-C">
+    <div class="scard-head">
+      <div class="shape-id" style="background:rgba(255,215,0,0.15);color:var(--warn)">C</div>
+      <div class="shape-names">
+        <div class="sname-en">中期反超型</div>
+        <div class="sname-zh">红色先领约20-24小时，绿色在-24h前后完成反超</div>
+      </div>
+      <div class="freq-badge">33% · 16例</div>
+    </div>
+    <div class="scard-chart" id="ch-C"></div>
+    <div class="scard-body">
+      <div class="feat-row">
+        <span class="ft r">起点红色明显领先（差距0.08-0.15）</span>
+        <span class="ft y">红色领先约18-24h</span>
+        <span class="ft g">-24h前后出现明确交叉</span>
+        <span class="ft g">反超后红色加速崩溃</span>
+      </div>
+      <div class="act" style="background:rgba(255,215,0,0.07);border-left:3px solid var(--warn)">
+        <strong style="color:var(--warn)">操作参考</strong>
+        最常见形态（33%）。反超交叉点是核心入场机会，发生后1-4小时内进场确认性最强。超过12小时才入场价格已偏高，需评估上行空间。
+      </div>
+    </div>
+    <div class="leg-row">
+      <div class="leg"><div class="leg-line" style="background:#00d4aa"></div>目标区间</div>
+      <div class="leg"><div class="leg-line" style="background:#ff6b6b"></div>最强竞争者</div>
+      <div class="leg"><div class="leg-area" style="background:rgba(255,215,0,0.3)"></div>反超窗口</div>
+    </div>
+  </div>
+
+  <!-- D ─────────────────────────────── -->
+  <div class="scard" id="card-D">
+    <div class="scard-head">
+      <div class="shape-id" style="background:rgba(255,159,67,0.15);color:#ff9f43">D</div>
+      <div class="shape-names">
+        <div class="sname-en">末期追赶型</div>
+        <div class="sname-zh">红色主导36小时以上，绿色在最后12小时完成反超</div>
+      </div>
+      <div class="freq-badge">8% · 4例</div>
+    </div>
+    <div class="scard-chart" id="ch-D"></div>
+    <div class="scard-body">
+      <div class="feat-row">
+        <span class="ft r">绿色趴底约0.06-0.10 超过28h</span>
+        <span class="ft r">红色一度达到0.50-0.70</span>
+        <span class="ft y">约-12h绿色突然大幅加速</span>
+        <span class="ft">反超后仍有剧烈震荡</span>
+      </div>
+      <div class="act" style="background:rgba(255,159,67,0.07);border-left:3px solid #ff9f43">
+        <strong style="color:#ff9f43">操作参考</strong>
+        追赶发生时绿色价格已从底部抬升（0.20-0.40），入场成本中等。在追赶开始后1-2小时确认动量方向再进场。注意此形态追赶过程波动大，不是"买了就涨"。
+      </div>
+    </div>
+    <div class="leg-row">
+      <div class="leg"><div class="leg-line" style="background:#00d4aa"></div>目标区间</div>
+      <div class="leg"><div class="leg-line" style="background:#ff6b6b"></div>最强竞争者</div>
+      <div class="leg"><div class="leg-area" style="background:rgba(255,159,67,0.3)"></div>追赶爆发窗口</div>
+    </div>
+  </div>
+
+  <!-- E ─────────────────────────────── -->
+  <div class="scard" id="card-E">
+    <div class="scard-head">
+      <div class="shape-id" style="background:rgba(255,107,107,0.15);color:var(--red)">E</div>
+      <div class="shape-names">
+        <div class="sname-en">临门一脚型</div>
+        <div class="sname-zh">红色主导44小时以上，绿色最后2-3小时垂直爆发</div>
+      </div>
+      <div class="freq-badge">2% · 极罕见</div>
+    </div>
+    <div class="scard-chart" id="ch-E"></div>
+    <div class="scard-body">
+      <div class="feat-row">
+        <span class="ft r">绿色全程趴底 0.05-0.25</span>
+        <span class="ft r">红色一度高达 0.85-0.91</span>
+        <span class="ft r">毫无追赶迹象长达44h</span>
+        <span class="ft g">最后2-3h绿色垂直暴涨至0.99</span>
+      </div>
+      <div class="act" style="background:rgba(255,107,107,0.07);border-left:3px solid var(--red)">
+        <strong style="color:var(--red)">操作参考</strong>
+        极罕见（2%）但赔率最高。这是逆转博弈手册的核心场景：绿色价格0.10-0.20、红色0.80+，且存在现象A（真实推文爆发）。高赔率押小注，接受高概率亏损。
+      </div>
+    </div>
+    <div class="leg-row">
+      <div class="leg"><div class="leg-line" style="background:#00d4aa"></div>目标区间</div>
+      <div class="leg"><div class="leg-line" style="background:#ff6b6b"></div>最强竞争者</div>
+      <div class="leg"><div class="leg-area" style="background:rgba(255,107,107,0.35)"></div>爆发窗口</div>
+    </div>
+  </div>
+
+  <!-- F ─────────────────────────────── -->
+  <div class="scard" id="card-F">
+    <div class="scard-head">
+      <div class="shape-id" style="background:rgba(162,155,254,0.15);color:#a29bfe">F</div>
+      <div class="shape-names">
+        <div class="sname-en">领先险守型</div>
+        <div class="sname-zh">绿色长期主导，末期红色突然大幅追赶——但绿色仍胜</div>
+      </div>
+      <div class="freq-badge">22% · 11例</div>
+    </div>
+    <div class="scard-chart" id="ch-F"></div>
+    <div class="scard-body">
+      <div class="feat-row">
+        <span class="ft g">绿色前35h稳定领先 0.30-0.67</span>
+        <span class="ft r">红色-12h起大幅飙升至 0.70+</span>
+        <span class="ft r">结算前2h：绿0.16 红0.84（看似红赢）</span>
+        <span class="ft g">结算：绿色胜出</span>
+      </div>
+      <div class="act" style="background:rgba(162,155,254,0.07);border-left:3px solid #a29bfe">
+        <strong style="color:#a29bfe">操作参考</strong>
+        持绿色最容易恐慌的形态（占22%）。末期红色急拉是流动性/价格噪音（现象B），不代表推文数真的要逆转。历史数据显示绿色在此情况下仍然胜出。不要轻易割肉。
+      </div>
+    </div>
+    <div class="leg-row">
+      <div class="leg"><div class="leg-line" style="background:#00d4aa"></div>目标区间</div>
+      <div class="leg"><div class="leg-line" style="background:#ff6b6b"></div>最强竞争者</div>
+      <div class="leg"><div class="leg-area" style="background:rgba(255,107,107,0.25)"></div>红色危险追赶区</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── REFERENCE TABLE ── -->
+<div class="ref-section">
+  <h3>算法标签 ↔ 视觉形态 对照（同一时刻可能对应不同形态，取决于交叉时间点）</h3>
+  <table class="ref-table">
+    <thead>
+      <tr><th>算法标签</th><th>中文名</th><th>核心判定条件</th><th>对应视觉形态</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>stable_spread</td><td>优势稳定</td><td>当前领先 且 近24h收益也领先</td><td>A·全程碾压 或 F·领先险守（取决于末期有无追赶）</td></tr>
+      <tr><td>current_and_recent_leader</td><td>强者恒强</td><td>当前领先 且 近12h均价也领先</td><td>A·全程碾压（最典型）或 B·快速确立（确立后阶段）</td></tr>
+      <tr><td>acceleration</td><td>加速领先</td><td>当前领先 且 近6h涨幅 > 近12h涨幅</td><td>A·全程碾压（加速扩大差距阶段）</td></tr>
+      <tr><td>breakout</td><td>突破反超</td><td>6h前落后，当前反超，6h涨幅>20%</td><td>B·快速确立 / C·中期反超 / D·末期追赶 均可能</td></tr>
+      <tr><td>divergence</td><td>走势分化</td><td>一方12h上涨，另一方12h下跌</td><td>C·中期反超（反超前后阶段）或 D·末期追赶（追赶期）</td></tr>
+      <tr><td>momentum_catcher</td><td>后发制人</td><td>当前落后但近12h涨幅明显高于对手</td><td>D·末期追赶（追赶中）或 E·临门一脚（爆发前夕）</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</main>
+
+<script>
+var charts = [];
+var xL = ['-48h','-47h','-46h','-45h','-44h','-43h','-42h','-41h','-40h','-39h','-38h','-37h','-36h','-35h','-34h','-33h','-32h','-31h','-30h','-29h','-28h','-27h','-26h','-25h','-24h','-23h','-22h','-21h','-20h','-19h','-18h','-17h','-16h','-15h','-14h','-13h','-12h','-11h','-10h','-9h','-8h','-7h','-6h','-5h','-4h','-3h','-2h','-1h'];
+
+// ── 真实市场数据（来自18个市场的实际价格曲线）──────────────────
+
+var dA = { // 全程碾压型 — may-26 to june-2, zone 300-319
+  g:[0.28,0.305,0.325,0.325,0.325,0.325,0.345,0.355,0.347,0.355,0.365,0.375,0.365,0.385,0.365,0.341,0.345,0.395,0.435,0.445,0.455,0.462,0.465,0.475,0.507,0.515,0.522,0.545,0.545,0.555,0.535,0.519,0.565,0.535,0.484,0.475,0.43,0.475,0.551,0.635,0.670,0.695,0.700,0.709,0.815,0.905,0.949,0.999],
+  r:[0.281,0.260,0.272,0.243,0.246,0.241,0.232,0.214,0.192,0.241,0.214,0.213,0.213,0.206,0.189,0.176,0.164,0.236,0.197,0.178,0.181,0.231,0.199,0.238,0.178,0.193,0.228,0.204,0.185,0.164,0.156,0.151,0.164,0.151,0.328,0.365,0.424,0.442,0.367,0.285,0.265,0.245,0.255,0.234,0.160,0.091,0.045,0.001],
+  zone:[36,47], zc:'rgba(0,212,170,0.09)'
+};
+var dB = { // 快速确立型 — march-27 to april-3, zone 260-279
+  g:[0.385,0.395,0.375,0.395,0.415,0.435,0.425,0.425,0.418,0.415,0.415,0.320,0.355,0.375,0.344,0.375,0.435,0.435,0.485,0.495,0.475,0.475,0.485,0.545,0.545,0.615,0.585,0.635,0.655,0.685,0.695,0.695,0.695,0.535,0.546,0.505,0.585,0.615,0.600,0.695,0.725,0.690,0.645,0.650,0.675,0.755,0.955,0.999],
+  r:[0.385,0.375,0.415,0.415,0.376,0.385,0.385,0.385,0.430,0.365,0.365,0.475,0.495,0.495,0.500,0.510,0.475,0.475,0.425,0.425,0.445,0.445,0.435,0.345,0.365,0.235,0.365,0.285,0.255,0.235,0.190,0.210,0.205,0.435,0.394,0.475,0.395,0.365,0.385,0.285,0.275,0.295,0.335,0.335,0.325,0.235,0.045,0.002],
+  zone:[0,16], zc:'rgba(255,215,0,0.09)'
+};
+var dC = { // 中期反超型 — april-10 to april-17, zone 220-239
+  g:[0.329,0.321,0.281,0.280,0.277,0.276,0.279,0.238,0.251,0.186,0.241,0.309,0.380,0.333,0.305,0.292,0.296,0.298,0.303,0.419,0.379,0.379,0.403,0.381,0.361,0.526,0.556,0.537,0.540,0.566,0.545,0.581,0.613,0.667,0.667,0.683,0.688,0.722,0.748,0.720,0.715,0.682,0.699,0.683,0.685,0.571,0.670,0.977],
+  r:[0.415,0.465,0.465,0.475,0.489,0.514,0.525,0.545,0.535,0.555,0.555,0.525,0.465,0.525,0.555,0.565,0.565,0.565,0.565,0.475,0.525,0.515,0.475,0.525,0.535,0.325,0.275,0.295,0.305,0.315,0.335,0.085,0.075,0.085,0.085,0.075,0.095,0.115,0.100,0.170,0.265,0.265,0.265,0.275,0.285,0.375,0.001,0.001],
+  zone:[19,31], zc:'rgba(255,215,0,0.10)'
+};
+var dD = { // 末期追赶型 — april-7 to april-14, zone 140-159
+  g:[0.093,0.093,0.079,0.074,0.073,0.071,0.065,0.083,0.100,0.093,0.084,0.076,0.069,0.070,0.071,0.072,0.073,0.060,0.053,0.047,0.038,0.039,0.037,0.037,0.032,0.032,0.094,0.073,0.402,0.325,0.345,0.322,0.291,0.289,0.365,0.352,0.500,0.608,0.571,0.466,0.344,0.411,0.381,0.281,0.195,0.422,0.984,0.999],
+  r:[0.361,0.341,0.323,0.311,0.254,0.230,0.211,0.303,0.365,0.376,0.389,0.372,0.382,0.400,0.422,0.411,0.424,0.408,0.401,0.383,0.411,0.372,0.369,0.333,0.347,0.292,0.562,0.696,0.474,0.559,0.571,0.617,0.626,0.636,0.570,0.589,0.402,0.325,0.390,0.498,0.616,0.566,0.619,0.699,0.810,0.580,0.001,0.001],
+  zone:[26,47], zc:'rgba(255,159,67,0.10)'
+};
+var dE = { // 临门一脚型 — may-22 to may-29, zone 180-199
+  g:[0.244,0.233,0.210,0.207,0.201,0.182,0.153,0.170,0.154,0.146,0.148,0.149,0.198,0.240,0.216,0.203,0.206,0.187,0.158,0.163,0.156,0.210,0.186,0.158,0.147,0.111,0.111,0.086,0.077,0.061,0.054,0.042,0.029,0.094,0.102,0.066,0.093,0.087,0.135,0.368,0.372,0.377,0.390,0.386,0.412,0.870,0.863,0.990],
+  r:[0.419,0.439,0.442,0.435,0.414,0.412,0.411,0.436,0.432,0.467,0.448,0.467,0.506,0.543,0.566,0.586,0.596,0.597,0.578,0.579,0.613,0.666,0.675,0.696,0.721,0.754,0.759,0.736,0.738,0.686,0.662,0.664,0.653,0.789,0.877,0.892,0.894,0.911,0.857,0.609,0.619,0.620,0.589,0.584,0.596,0.115,0.001,0.001],
+  zone:[43,47], zc:'rgba(255,107,107,0.13)'
+};
+var dF = { // 领先险守型 — march-27 to april-3, zone 200-219
+  // 真实案例：结算前2h 绿=0.159 红=0.843，结算绿色胜出
+  g:[0.317,0.285,0.274,0.298,0.314,0.320,0.319,0.319,0.334,0.291,0.300,0.307,0.319,0.314,0.323,0.411,0.369,0.375,0.414,0.434,0.435,0.428,0.494,0.490,0.557,0.562,0.576,0.581,0.560,0.634,0.602,0.651,0.673,0.635,0.533,0.490,0.437,0.454,0.461,0.473,0.446,0.429,0.410,0.417,0.393,0.273,0.159,0.998],
+  r:[0.105,0.056,0.044,0.060,0.066,0.069,0.077,0.089,0.090,0.063,0.058,0.062,0.074,0.048,0.059,0.063,0.053,0.021,0.041,0.029,0.027,0.027,0.048,0.076,0.094,0.102,0.111,0.134,0.184,0.219,0.282,0.201,0.231,0.345,0.397,0.446,0.490,0.466,0.478,0.485,0.549,0.524,0.548,0.573,0.588,0.700,0.843,0.001],
+  zone:[33,46], zc:'rgba(255,107,107,0.10)'
+};
+
+function mkChart(id, d) {
+  var dom = document.getElementById(id);
+  if (!dom) return;
+  var c = echarts.init(dom, null, { renderer: 'canvas' });
+  var gs = {
+    name:'目标区间', type:'line', smooth:true, symbol:'none',
+    lineStyle:{ color:'#00d4aa', width:2 },
+    areaStyle:{ color:'rgba(0,212,170,0.05)' },
+    data: d.g
+  };
+  if (d.zone) {
+    gs.markArea = {
+      silent: true,
+      itemStyle: { color: d.zc || 'rgba(255,215,0,0.08)' },
+      data: [[{ xAxis: d.zone[0] }, { xAxis: d.zone[1] }]]
+    };
+  }
+  c.setOption({
+    animation: false,
+    backgroundColor: 'transparent',
+    grid: { top:8, bottom:30, left:38, right:10 },
+    xAxis: {
+      type:'category', data:xL, boundaryGap:false,
+      axisLabel:{ color:'#4a5568', fontSize:10,
+        formatter:function(v,i){ return (i%8===0||i===47)?v:''; }
+      },
+      axisLine:{ lineStyle:{ color:'#2a2f3a' } },
+      splitLine:{ show:false }, axisTick:{ show:false }
+    },
+    yAxis: {
+      type:'value', min:0, max:1,
+      splitLine:{ lineStyle:{ color:'#1e232d', type:'dashed' } },
+      axisLabel:{ color:'#4a5568', fontSize:10,
+        formatter:function(v){ return (v===0||v===0.5||v===1)?v.toFixed(1):''; }
+      }
+    },
+    series:[
+      gs,
+      { name:'最强竞争者', type:'line', smooth:true, symbol:'none',
+        lineStyle:{ color:'#ff6b6b', width:2 },
+        areaStyle:{ color:'rgba(255,107,107,0.04)' },
+        data: d.r
+      }
+    ],
+    tooltip:{
+      trigger:'axis', backgroundColor:'#14171c', borderColor:'#2a2f3a',
+      textStyle:{ color:'#e0e6f0', fontSize:11 },
+      formatter:function(p){
+        return p[0].axisValue+'<br>'
+          +'<span style="color:#00d4aa">●</span> 目标 '+p[0].data.toFixed(3)+'<br>'
+          +'<span style="color:#ff6b6b">●</span> 对手 '+p[1].data.toFixed(3);
+      }
+    }
+  });
+  charts.push(c);
+}
+
+mkChart('ch-A', dA);
+mkChart('ch-B', dB);
+mkChart('ch-C', dC);
+mkChart('ch-D', dD);
+mkChart('ch-E', dE);
+mkChart('ch-F', dF);
+
+window.addEventListener('resize', function(){ charts.forEach(function(c){c.resize();}); });
+
+// ── QUICK FINDER ──────────────────────────────────────────────────────────
+function fgo(stepId) {
+  ['fs1','fs2a','fs2b','fs3a'].forEach(function(id){ document.getElementById(id).classList.remove('active'); });
+  document.getElementById('f-result').classList.remove('show');
+  document.querySelectorAll('.scard').forEach(function(el){ el.classList.remove('highlight'); });
+  document.getElementById(stepId).classList.add('active');
+}
+
+var shapeInfo = {
+  A: { name:'A · 全程碾压型', desc:'绿色从-48h就稳定领先，差距单调扩大，红色无有效反弹。最确定的形态，任何时间买入均合理，越早成本越低。', card:'card-A' },
+  B: { name:'B · 快速确立型', desc:'初期有短暂拉锯（黄色窗口），但绿色约在-33h前后确立稳定领先。领先确立后历史上极少逆转，确认站稳后入场。', card:'card-B' },
+  C: { name:'C · 中期反超型', desc:'最常见形态（33%）。绿色在约-24h完成反超，反超发生时是最佳入场窗口，发生后1-4小时内进场确认性最强。', card:'card-C' },
+  D: { name:'D · 末期追赶型', desc:'绿色在最后12小时才开始追赶。追赶开始后入场仍有机会，但价格已不低，需注意追赶过程中的剧烈震荡。', card:'card-D' },
+  E: { name:'E · 临门一脚型', desc:'极罕见（2%）的高赔率逆转场景。绿色最后2-3小时垂直爆发，需要现象A（真实推文爆发）触发。→ 详见逆转博弈手册。', card:'card-E' },
+  F: { name:'F · 领先险守型', desc:'绿色长期领先但末期遭红色大幅追赶（22%的案例出现）。历史数据：绿色在此情况下仍然胜出。末期红色急拉是噪音，不要轻易割肉。', card:'card-F' }
+};
+
+function fshow(shape) {
+  var info = shapeInfo[shape];
+  document.getElementById('f-rname').textContent = info.name;
+  document.getElementById('f-rdesc').textContent = info.desc;
+  document.getElementById('f-result').classList.add('show');
+  ['fs1','fs2a','fs2b','fs3a'].forEach(function(id){ document.getElementById(id).classList.remove('active'); });
+  document.querySelectorAll('.scard').forEach(function(el){ el.classList.remove('highlight'); });
+  document.getElementById(info.card).classList.add('highlight');
+  setTimeout(function(){
+    document.getElementById(info.card).scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 100);
+}
+
+function freset() {
+  ['fs2a','fs2b','fs3a'].forEach(function(id){ document.getElementById(id).classList.remove('active'); });
+  document.getElementById('fs1').classList.add('active');
+  document.getElementById('f-result').classList.remove('show');
+  document.querySelectorAll('.scard').forEach(function(el){ el.classList.remove('highlight'); });
+}
+</script>
+</body>
+</html>
