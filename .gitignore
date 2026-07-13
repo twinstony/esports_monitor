@@ -14,3 +14,4 @@ archives/
 .venv/
 venv/
 *.egg-info/
+esports_monitor.log.*

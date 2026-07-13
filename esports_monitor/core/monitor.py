@@ -44,6 +44,7 @@ from ..utils.time_utils import from_utc_iso, now_utc, to_utc_iso
 
 ARCHIVE_TASK_NAME = "data_archive"
 STATUS_REPORT_TASK_NAME = "status_report"
+DAILY_TRADE_SUMMARY_TASK_NAME = "daily_trade_summary"
 
 
 class Monitor:
@@ -189,6 +190,9 @@ class Monitor:
 
                 # 6. 发送状态报告（即使无信号也定期发送）
                 self._check_and_send_status_report()
+
+                # 7. 发送每日模拟开单总结（每天一次，task_runs 去重）
+                self._check_and_send_daily_trade_summary()
 
             except Exception as exc:
                 self._logger.error("监控主循环异常: %s", exc)
@@ -358,10 +362,16 @@ class Monitor:
     # ------------------------------------------------------------------
 
     def _update_live_status(self, matches: List[Dict[str, Any]]) -> None:
-        """根据当前时间更新比赛状态：discovered → live → ended。"""
+        """根据当前时间更新比赛状态：discovered → live → ended。
+
+        额外检测：
+        - 基于价格的结束检测：任一队伍价格 >= 0.99 或 <= 0.01，视为比赛已决出胜负
+        - 比赛开始后超过合理时间（默认360分钟=6小时）仍未结束，强制标记为ended
+        """
         if not matches:
             return
         now = now_utc()
+        max_match_duration_minutes = float(self.config.get("discovery", {}).get("max_match_duration_hours", 24)) * 60
         for match in matches:
             try:
                 status = match.get("status")
@@ -371,10 +381,23 @@ class Monitor:
                 end_str = match.get("end_time")
                 start_dt = from_utc_iso(start_str) if start_str else None
                 end_dt = from_utc_iso(end_str) if end_str else None
-                # 已过结束时间 → ended
+
+                # 条件1：已过结束时间 → ended
                 if end_dt is not None and now > end_dt:
                     self.storage.update_match_status(match["match_id"], "ended")
                     continue
+
+                # 条件2：比赛开始后超过合理时间 → ended（防止end_time设置错误导致永久监控）
+                if start_dt is not None and now >= start_dt:
+                    minutes_since_start = (now - start_dt).total_seconds() / 60.0
+                    if minutes_since_start > max_match_duration_minutes:
+                        self._logger.info(
+                            "比赛超时强制结束 match=%s minutes_since_start=%.0f > %.0f",
+                            match["match_id"], minutes_since_start, max_match_duration_minutes,
+                        )
+                        self.storage.update_match_status(match["match_id"], "ended")
+                        continue
+
                 # 已开始未结束 → live
                 if status == "discovered" and start_dt is not None and now >= start_dt:
                     self.storage.update_match_status(match["match_id"], "live")
@@ -442,6 +465,16 @@ class Monitor:
                 target_market.price_a, now_iso,
             )
             price_n = int(bool(ok1)) + int(bool(ok2))
+
+            # 价格结束检测：任一队伍价格达到极端值（>= 0.99 或 <= 0.01），视为比赛已结束
+            if target_market.price_a >= 0.99 or target_market.price_b >= 0.99:
+                self._logger.info(
+                    "价格触发结束 match=%s price_a=%.4f price_b=%.4f",
+                    match_id, target_market.price_a, target_market.price_b,
+                )
+                winning_team = match.get("team_a") if target_market.price_a >= 0.99 else match.get("team_b")
+                self.storage.update_match_status(match_id, "ended", winning_team=winning_team)
+                return True, price_n, 0, 0
 
             # 3. 获取 CLOB 盘口并写入快照
             ob_n = self._fetch_and_save_orderbook(match, target_market, now_iso)
@@ -861,3 +894,61 @@ class Monitor:
             db_size_mb=db_size,
             grouped_stats=grouped_stats,
         )
+
+    def _check_and_send_daily_trade_summary(self) -> None:
+        """发送每日模拟开单总结（每天一次，task_runs 去重）。
+
+        发送条件：
+        1. 当日有交易记录
+        2. 当天尚未发送过
+        3. 时间在 00:00-02:00 UTC（北京时间 08:00-10:00）之间
+        """
+        tg_cfg = (self.config.get("notification") or {}).get("telegram") or {}
+        if not tg_cfg.get("status_report_enabled", True):
+            return
+
+        now = now_utc()
+        date_str = now.strftime("%Y-%m-%d")
+        hour = now.hour
+
+        # 只在 00:00-02:00 UTC 之间发送（北京时间 08:00-10:00）
+        if hour < 0 or hour >= 2:
+            return
+
+        # 检查当天是否已发送
+        try:
+            last_run_iso = self.storage.get_last_task_run(DAILY_TRADE_SUMMARY_TASK_NAME)
+            if last_run_iso:
+                last_run = from_utc_iso(last_run_iso)
+                if last_run is not None and last_run.strftime("%Y-%m-%d") == date_str:
+                    return
+        except Exception as exc:
+            self._logger.error("检查每日总结去重异常: %s", exc)
+
+        try:
+            daily_stats = self.storage.get_daily_trade_stats(date_str)
+            cumulative_stats = self.morphology_repo.get_trade_stats()
+
+            # 当日无交易则跳过
+            if daily_stats.get("total", 0) == 0:
+                return
+
+            grouped_stats = {
+                "by_signal": self.storage.get_trade_stats_grouped("signal_name"),
+                "by_game": self.storage.get_trade_stats_grouped("game"),
+                "by_window": self.storage.get_trade_stats_grouped("window_label"),
+            }
+
+            self.notifier.send_daily_trade_summary(
+                date_str=date_str,
+                daily_stats=daily_stats,
+                cumulative_stats=cumulative_stats,
+                grouped_stats=grouped_stats,
+            )
+
+            # 记录任务运行
+            summary = f"date={date_str} trades={daily_stats['total']} pnl={daily_stats['total_pnl']:.2f}"
+            self.storage.mark_task_run(DAILY_TRADE_SUMMARY_TASK_NAME, summary)
+            self._logger.info("每日模拟开单总结已发送: %s", summary)
+        except Exception as exc:
+            self._logger.error("发送每日模拟开单总结异常: %s", exc)

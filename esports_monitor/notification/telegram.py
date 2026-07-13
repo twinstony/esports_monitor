@@ -452,6 +452,79 @@ class TelegramNotifier:
         ]
         return self.send_message("\n".join(lines))
 
+    # ------------------------------------------------------------------
+    # 每日模拟开单总结
+    # ------------------------------------------------------------------
+
+    def send_daily_trade_summary(
+        self,
+        date_str: str,
+        daily_stats: Dict[str, Any],
+        cumulative_stats: Dict[str, Any],
+        grouped_stats: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    ) -> bool:
+        """发送每日模拟开单总结。
+
+        Args:
+            date_str: 日期（YYYY-MM-DD）
+            daily_stats: 当日统计 {"total": N, "settled": N, "wins": N, "losses": N, "total_pnl": 0.0}
+            cumulative_stats: 累计统计（同结构）
+            grouped_stats: 分组统计（按信号类型/游戏/窗口）
+        """
+        dt = daily_stats
+        ct = cumulative_stats
+
+        dt_total = dt.get("total", 0)
+        dt_settled = dt.get("settled", 0)
+        dt_wins = dt.get("wins", 0)
+        dt_losses = dt.get("losses", 0)
+        dt_pnl = dt.get("total_pnl", 0.0)
+        dt_win_rate = (dt_wins / dt_settled * 100) if dt_settled > 0 else 0.0
+
+        ct_total = ct.get("total", 0)
+        ct_settled = ct.get("settled", 0)
+        ct_wins = ct.get("wins", 0)
+        ct_losses = ct.get("losses", 0)
+        ct_pnl = ct.get("total_pnl", 0.0)
+        ct_win_rate = (ct_wins / ct_settled * 100) if ct_settled > 0 else 0.0
+
+        lines = [
+            f"📊 <b>[每日模拟开单总结 {date_str}]</b>",
+            "━━━━━━━━━━━━━━━━━━━━━",
+            f"📅 当日交易: {dt_total} 笔",
+            f"  已结算: {dt_settled} 笔",
+            f"  胜率: {dt_win_rate:.1f}% ({dt_wins}胜{dt_losses}负)",
+            f"  PnL: {dt_pnl:+.2f} USD",
+            "",
+            f"🏆 累计交易: {ct_total} 笔",
+            f"  已结算: {ct_settled} 笔",
+            f"  胜率: {ct_win_rate:.1f}% ({ct_wins}胜{ct_losses}负)",
+            f"  累计PnL: {ct_pnl:+.2f} USD",
+        ]
+
+        if grouped_stats:
+            lines.append("━━━━━━━━━━━━━━━━━━━━━")
+            lines.append("📈 分组统计:")
+            for key, title in [("by_signal", "按信号"), ("by_game", "按游戏"), ("by_window", "按窗口")]:
+                rows = grouped_stats.get(key) or []
+                settled_rows = [r for r in rows if r.get("settled", 0) > 0]
+                if not settled_rows:
+                    continue
+                lines.append(f"  {title}:")
+                sorted_rows = sorted(settled_rows, key=lambda r: r.get("total_pnl", 0.0), reverse=True)
+                for r in sorted_rows[:3]:
+                    gk = r.get("group_key") or "?"
+                    st = r.get("settled", 0)
+                    w = r.get("wins", 0)
+                    lo = r.get("losses", 0)
+                    pnl = r.get("total_pnl", 0.0)
+                    wr = (w / st * 100) if st > 0 else 0.0
+                    lines.append(f"    {gk}: {st}笔 {wr:.0f}%胜 {pnl:+.1f}USD")
+
+        lines.append("━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"⏰ {to_beijing_str(now_utc())} 北京时间")
+        return self.send_message("\n".join(lines))
+
 
 def create_notifier_from_config(
     config: Dict[str, Any],

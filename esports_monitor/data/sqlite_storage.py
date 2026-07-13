@@ -775,6 +775,44 @@ class SQLiteStorage:
             self._logger.error("get_trade_stats_grouped 失败: %s", exc)
             return []
 
+    def get_daily_trade_stats(self, date_str: str) -> Dict[str, Any]:
+        """获取指定日期的交易统计。
+
+        Args:
+            date_str: 日期（YYYY-MM-DD）
+
+        Returns:
+            {"total": N, "settled": N, "wins": N, "losses": N, "total_pnl": 0.0}
+        """
+        try:
+            with self._connect(row_factory=True) as conn:
+                cur = conn.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total,
+                        SUM(CASE WHEN settled=1 THEN 1 ELSE 0 END) AS settled,
+                        SUM(CASE WHEN settled=1 AND pnl_usd>0 THEN 1 ELSE 0 END) AS wins,
+                        SUM(CASE WHEN settled=1 AND pnl_usd<=0 THEN 1 ELSE 0 END) AS losses,
+                        COALESCE(SUM(CASE WHEN settled=1 THEN pnl_usd ELSE 0 END), 0) AS total_pnl
+                    FROM morphology_trades
+                    WHERE DATE(opened_at) = ?
+                    """,
+                    (date_str,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"total": 0, "settled": 0, "wins": 0, "losses": 0, "total_pnl": 0.0}
+                result = dict(row)
+                for k in ("total", "settled", "wins", "losses"):
+                    if result.get(k) is None:
+                        result[k] = 0
+                if result.get("total_pnl") is None:
+                    result["total_pnl"] = 0.0
+                return result
+        except Exception as exc:
+            self._logger.error("get_daily_trade_stats 失败: %s", exc)
+            return {"total": 0, "settled": 0, "wins": 0, "losses": 0, "total_pnl": 0.0}
+
     # ------------------------------------------------------------------
     # morphology_cooldown 表操作
     # ------------------------------------------------------------------
