@@ -76,6 +76,14 @@ class MorphologySimulator:
             if vwap is not None and 0 < vwap < 1.0:
                 buy_price = vwap
 
+        # 再次检查VWAP后的价格边界（防止VWAP计算产生极端价格）
+        if not (self.buy_price_min < buy_price < self.buy_price_max):
+            self._logger.debug(
+                "VWAP后买入价 %.4f 超出边界 [%.2f, %.2f]，跳过开仓",
+                buy_price, self.buy_price_min, self.buy_price_max,
+            )
+            return None
+
         # 计算份数
         if buy_price <= 0:
             return None
