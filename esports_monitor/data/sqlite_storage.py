@@ -318,17 +318,40 @@ class SQLiteStorage:
             return False
 
     def update_match_status(
-        self, match_id: str, status: str, winning_team: Optional[str] = None
+        self,
+        match_id: str,
+        status: str,
+        winning_team: Optional[str] = None,
+        real_end_time: Optional[str] = None,
     ) -> bool:
-        """更新比赛状态。"""
+        """更新比赛状态。
+
+        Args:
+            match_id: 比赛 ID
+            status: 新状态
+            winning_team: 获胜队伍（可选）
+            real_end_time: 比赛实际结束时间 UTC ISO（可选，用于标注 real_end_time 列）
+        """
         try:
             now = to_utc_iso(now_utc())
             with self._connect() as conn:
-                if winning_team is not None:
+                if winning_team is not None and real_end_time is not None:
+                    conn.execute(
+                        "UPDATE matches SET status=?, winning_team=?, real_end_time=?, "
+                        "updated_at=? WHERE match_id=?",
+                        (status, winning_team, real_end_time, now, match_id),
+                    )
+                elif winning_team is not None:
                     conn.execute(
                         "UPDATE matches SET status=?, winning_team=?, updated_at=? "
                         "WHERE match_id=?",
                         (status, winning_team, now, match_id),
+                    )
+                elif real_end_time is not None:
+                    conn.execute(
+                        "UPDATE matches SET status=?, real_end_time=?, updated_at=? "
+                        "WHERE match_id=?",
+                        (status, real_end_time, now, match_id),
                     )
                 else:
                     conn.execute(

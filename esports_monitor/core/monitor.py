@@ -441,6 +441,15 @@ class Monitor:
             # 已结束 → 跳过（状态应由 _update_live_status 处理为 ended）
             if end_dt is not None and now > end_dt:
                 return False, 0, 0, 0, None
+            # real_end_time 已过 → 比赛实际已结束（由清洗脚本或 API 检测填充），跳过
+            real_end_str = match.get("real_end_time")
+            real_end_dt = from_utc_iso(real_end_str) if real_end_str else None
+            if real_end_dt is not None and now > real_end_dt:
+                self._logger.debug(
+                    "比赛实际已结束（real_end_time），跳过 cid=%s real_end=%s",
+                    match_id, real_end_str,
+                )
+                return False, 0, 0, 0, None
             # 未开始 → 跳过数据采集和形态检测
             if start_dt is not None and now < start_dt:
                 self._logger.debug(
@@ -453,6 +462,32 @@ class Monitor:
             event = self.gamma_client.fetch_event(slug)
             if not event:
                 return False, 0, 0, 0, None
+
+            # API 结束检测：event.ended=true 表示 Polymarket 已标记比赛结束
+            # 优先于价格检测，避免 post_match 阶段继续触发形态信号和开仓
+            if event.get("ended") is True:
+                now_iso = to_utc_iso(now_utc())
+                winning_team = match.get("team_a")
+                # 通过价格推断获胜方（若能从 markets 解析）
+                markets_peek = self.gamma_client.parse_match_markets(event)
+                if markets_peek:
+                    tm = next((m for m in markets_peek if m.condition_id == match_id), None)
+                    if tm:
+                        if tm.price_a >= 0.99:
+                            winning_team = match.get("team_a")
+                        elif tm.price_b >= 0.99:
+                            winning_team = match.get("team_b")
+                self._logger.info(
+                    "API 标记比赛已结束 match=%s ended=True winning=%s",
+                    match_id, winning_team,
+                )
+                self.storage.update_match_status(
+                    match_id, "ended",
+                    winning_team=winning_team,
+                    real_end_time=now_iso,
+                )
+                return True, 0, 0, 0, None
+
             markets = self.gamma_client.parse_match_markets(event)
             if not markets:
                 return False, 0, 0, 0, None
@@ -484,7 +519,11 @@ class Monitor:
                     match_id, target_market.price_a, target_market.price_b,
                 )
                 winning_team = match.get("team_a") if target_market.price_a >= 0.99 else match.get("team_b")
-                self.storage.update_match_status(match_id, "ended", winning_team=winning_team)
+                self.storage.update_match_status(
+                    match_id, "ended",
+                    winning_team=winning_team,
+                    real_end_time=now_iso,
+                )
                 _details = self._build_match_details(match, target_market, start_dt, now, ob_n)
                 return True, price_n, 0, 0, _details
 
