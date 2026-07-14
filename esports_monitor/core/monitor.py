@@ -371,14 +371,17 @@ class Monitor:
         """根据当前时间更新比赛状态：discovered → live → ended。
 
         额外检测：
-        - 基于价格的结束检测：任一队伍价格 >= 0.99 或 <= 0.01，视为比赛已决出胜负
-        - 比赛开始后超过合理时间（默认360分钟=6小时）仍未结束，强制标记为ended
+        - 基于结束时间：end_time 已过 → ended
+        - 基于市场存续超时：start_time 至今超过 max_match_duration_hours（默认168h=7天）→ ended
+        - 基于价格：由 _check_single_match 检测价格极端值（>=0.99）→ ended
         """
         if not matches:
             return
         now = now_utc()
-        # 使用 discovery.max_match_duration_hours 作为监控超时（市场存续周期，非比赛时长）
-        max_match_duration_minutes = float(self.config.get("max_match_duration_hours", 168)) * 60
+        # 从 discovery 配置读取 max_match_duration_hours（市场存续周期上限）
+        discovery_cfg = self.config.get("discovery") or {}
+        max_match_duration_hours = float(discovery_cfg.get("max_match_duration_hours", 168))
+        max_match_duration_minutes = max_match_duration_hours * 60
         for match in matches:
             try:
                 status = match.get("status")
@@ -445,17 +448,6 @@ class Monitor:
                     match_id, start_str,
                 )
                 return True, 0, 0, 0, None  # 返回 ok=True 但不采集数据
-            # 超时跳过：市场存续超过 max_match_duration_hours → 不再采集
-            # 注意：start_time 是市场创建时间，非比赛开始时间
-            if start_dt is not None and now >= start_dt:
-                max_duration_min = float(self.config.get("max_match_duration_hours", 168)) * 60
-                minutes_since_start = (now - start_dt).total_seconds() / 60.0
-                if minutes_since_start > max_duration_min:
-                    self._logger.info(
-                        "市场超时跳过采集 match=%s minutes_since_start=%.0f > %.0f",
-                        match_id, minutes_since_start, max_duration_min,
-                    )
-                    return False, 0, 0, 0, None
 
             # 1. 获取 Gamma 价格
             event = self.gamma_client.fetch_event(slug)
@@ -537,8 +529,8 @@ class Monitor:
                                 "notional_usd": self.morphology_simulator.notional_usd,
                                 "opened_at": to_utc_iso(now_utc()),
                             })
-                elif alert and alert.status != "normal":
-                    # 形态跳过原因通知
+                elif alert and alert.status != "normal" and alert.status != "no_signal":
+                    # 形态跳过原因通知（no_signal 不通知，避免刷屏）
                     self._notify_morphology_skipped(match, alert)
             else:
                 # 形态分析禁用
