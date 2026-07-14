@@ -105,68 +105,46 @@ class MarketDiscoveryService:
     def discover(self) -> DiscoveryResult:
         """执行一轮市场发现。
 
-        精确发现流程（以 Polymarket 网页 isLive 标记为唯一真相）：
-        1. 抓取 Polymarket 电竞页面，解析 "isLive":true 的 event slug 集合
-        2. 对每个 live slug 调 Gamma API fetch_event 获取详情
-        3. 解析比赛胜负二元市场
-        4. 识别游戏类型（cs2/dota2/lol）
-        5. 流动性筛选
+        发现流程：
+        1. 通过 Gamma API 按 tag_slugs 查询所有活跃赛事（closed=false）
+        2. 对每场赛事调 parse_match_markets 获取二元市场
+        3. 识别游戏类型（cs2/dota2/lol）
+        4. 流动性筛选
 
-        若网页抓取失败（返回空 slug 列表），fallback 到 Gamma API
-        volume24hr 降序查询（不精确，但保证发现流程不中断）。
+        注意：使用 Gamma API 直接查询，获取所有活跃赛事（包括即将开始的），
+        不依赖 Polymarket 网页的 isLive 标记（仅获取正在直播的赛事）。
         """
         result = DiscoveryResult()
         games = self.config.get("games") or ["cs2", "dota2", "lol"]
 
-        # 1. 从 Polymarket 网页提取 isLive:true 的 slug 集合（精确）
-        live_slugs = self.gamma_client.fetch_live_event_slugs()
-        use_precise_mode = bool(live_slugs)
+        # 使用 Gamma API 按 tag_slugs 查询所有活跃赛事
+        tag_slugs = self.config.get("tag_slugs")
+        if not tag_slugs:
+            single = self.config.get("tag_slug") or "esports"
+            tag_slugs = [single]
+        if not isinstance(tag_slugs, list):
+            tag_slugs = [str(tag_slugs)]
 
-        if use_precise_mode:
-            # 精确模式：只处理 isLive:true 的赛事
-            self._logger.info(
-                "市场发现（精确模式）：%d 场直播赛事 %s",
-                len(live_slugs), live_slugs,
+        live_window_hours = float(self.config.get("live_window_hours", 168))
+        now = now_utc()
+        end_date_min = to_utc_iso(now)
+        start_date_max = to_utc_iso(now + timedelta(hours=live_window_hours))
+
+        events: List[Dict[str, Any]] = []
+        seen_event_ids: set = set()
+        for slug in tag_slugs:
+            fetched = self.gamma_client.fetch_events(
+                tag_slug=str(slug),
+                end_date_min=end_date_min,
+                start_date_max=start_date_max,
             )
-            events: List[Dict[str, Any]] = []
-            for slug in live_slugs:
-                event = self.gamma_client.fetch_event(slug)
-                if event:
-                    events.append(event)
-                else:
-                    result.errors += 1
-        else:
-            # Fallback 模式：Gamma API volume24hr 降序查询
-            self._logger.warning(
-                "市场发现（fallback 模式）：网页抓取失败，使用 Gamma API volume24hr 降序"
-            )
-            tag_slugs = self.config.get("tag_slugs")
-            if not tag_slugs:
-                single = self.config.get("tag_slug") or "esports"
-                tag_slugs = [single]
-            if not isinstance(tag_slugs, list):
-                tag_slugs = [str(tag_slugs)]
-
-            live_window_hours = float(self.config.get("live_window_hours", 48))
-            now = now_utc()
-            end_date_min = to_utc_iso(now)
-            start_date_max = to_utc_iso(now + timedelta(hours=live_window_hours))
-
-            events = []
-            seen_event_ids: set = set()
-            for slug in tag_slugs:
-                fetched = self.gamma_client.fetch_events(
-                    tag_slug=str(slug),
-                    end_date_min=end_date_min,
-                    start_date_max=start_date_max,
-                )
-                if not fetched:
-                    continue
-                for e in fetched:
-                    eid = e.get("id") or e.get("slug")
-                    if eid and eid not in seen_event_ids:
-                        seen_event_ids.add(eid)
-                        events.append(e)
+            if not fetched:
+                continue
+            for e in fetched:
+                eid = e.get("id") or e.get("slug")
+                if eid and eid not in seen_event_ids:
+                    seen_event_ids.add(eid)
+                    events.append(e)
 
         if not events:
             self._logger.info("市场发现：未拉取到电竞赛事")
@@ -196,9 +174,8 @@ class MarketDiscoveryService:
                 self._logger.debug("赛事解析失败: %s", exc)
                 result.errors += 1
 
-        mode = "precise" if use_precise_mode else "fallback"
         result.summary = (
-            f"mode={mode} events={len(events)} new_matches={len(result.new_matches)} "
+            f"mode=gamma_api events={len(events)} new_matches={len(result.new_matches)} "
             f"skipped={result.skipped} errors={result.errors}"
         )
         return result

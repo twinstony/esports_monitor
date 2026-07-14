@@ -562,29 +562,31 @@ class TestDiscoverMultiTag:
 
 
 class TestDiscoverPreciseMode:
-    """精确模式测试（以 Polymarket 网页 isLive 标记为准）。"""
+    """Gamma API 发现模式测试。"""
 
     def test_precise_mode_uses_live_slugs(self):
-        """精确模式：fetch_live_event_slugs 返回 slug 后，用 fetch_event 获取详情。"""
+        """Gamma API 模式：通过 fetch_events 获取所有活跃赛事。"""
         gamma = MagicMock()
         future_end = to_utc_iso(now_utc() + timedelta(hours=2))
-        gamma.fetch_live_event_slugs.return_value = ["cs2-leo2-ast-2026-06-29"]
-        gamma.fetch_event.return_value = {
-            "slug": "cs2-leo2-ast-2026-06-29",
-            "title": "Leo Team vs ASTRAL",
-            "tags": [{"label": "CS2"}],
-            "markets": [
-                {
-                    "conditionId": "0x1",
-                    "outcomes": ["Leo Team", "ASTRAL"],
-                    "outcomePrices": ["0.3", "0.7"],
-                    "clobTokenIds": ["ta", "tb"],
-                    "question": "Will Leo Team defeat ASTRAL?",
-                    "groupItemTitle": "Match Winner",
-                    "endDate": future_end,
-                }
-            ],
-        }
+        gamma.fetch_live_event_slugs.return_value = []  # 不再使用
+        gamma.fetch_events.return_value = [
+            {
+                "slug": "cs2-leo2-ast-2026-06-29",
+                "title": "Leo Team vs ASTRAL",
+                "tags": [{"label": "CS2"}],
+                "markets": [
+                    {
+                        "conditionId": "0x1",
+                        "outcomes": ["Leo Team", "ASTRAL"],
+                        "outcomePrices": ["0.3", "0.7"],
+                        "clobTokenIds": ["ta", "tb"],
+                        "question": "Will Leo Team defeat ASTRAL?",
+                        "groupItemTitle": "Match Winner",
+                        "endDate": future_end,
+                    }
+                ],
+            }
+        ]
         gamma.parse_match_markets.return_value = [
             MatchMarket(
                 condition_id="0x1", clob_token_ids=["ta", "tb"],
@@ -597,31 +599,26 @@ class TestDiscoverPreciseMode:
             gamma_client=gamma, clob_client=None,
             config={
                 "games": ["cs2"],
+                "tag_slugs": ["counter-strike-2"],
                 "price_min": 0.01, "price_max": 0.99,
-                "live_window_hours": 48,
-                "max_match_duration_hours": 48,
+                "live_window_hours": 168,
+                "max_match_duration_hours": 168,
             },
         )
         result = svc.discover()
-        # 精确模式：fetch_live_event_slugs 被调用
-        gamma.fetch_live_event_slugs.assert_called_once()
-        # fetch_event 被调用（不是 fetch_events）
-        gamma.fetch_event.assert_called_once_with("cs2-leo2-ast-2026-06-29")
+        # Gamma API 模式：fetch_events 被调用
+        gamma.fetch_events.assert_called_once()
         # 发现 1 场比赛
         assert len(result.new_matches) == 1
         assert result.new_matches[0].team_a == "Leo Team"
-        assert "mode=precise" in result.summary
+        assert "mode=gamma_api" in result.summary
 
     def test_precise_mode_skips_non_target_games(self):
-        """精确模式：Valorant/R6 等 isLive 比赛不在 games 配置中应被跳过。"""
+        """Gamma API 模式：Valorant 等不在 games 配置中应被跳过。"""
         gamma = MagicMock()
         future_end = to_utc_iso(now_utc() + timedelta(hours=2))
-        gamma.fetch_live_event_slugs.return_value = [
-            "val-jl-bar-2026-06-29",  # Valorant
-            "cs2-leo2-ast-2026-06-29",  # CS2
-        ]
-        # Valorant event
-        gamma.fetch_event.side_effect = [
+        gamma.fetch_live_event_slugs.return_value = []
+        gamma.fetch_events.return_value = [
             {
                 "slug": "val-jl-bar-2026-06-29",
                 "title": "Joblife vs Barça",
@@ -657,9 +654,10 @@ class TestDiscoverPreciseMode:
             gamma_client=gamma, clob_client=None,
             config={
                 "games": ["cs2", "dota2", "lol"],  # 不含 valorant
+                "tag_slugs": ["counter-strike-2"],
                 "price_min": 0.01, "price_max": 0.99,
-                "live_window_hours": 48,
-                "max_match_duration_hours": 48,
+                "live_window_hours": 168,
+                "max_match_duration_hours": 168,
             },
         )
         result = svc.discover()
@@ -668,9 +666,8 @@ class TestDiscoverPreciseMode:
         assert result.skipped >= 1  # Valorant 被跳过
 
     def test_fallback_mode_when_page_fetch_fails(self):
-        """网页抓取失败时，fallback 到 Gamma API volume24hr 查询。"""
+        """Gamma API 模式：始终使用 fetch_events 查询活跃赛事。"""
         gamma = MagicMock()
-        gamma.fetch_live_event_slugs.return_value = []  # 网页抓取失败
         future_end = to_utc_iso(now_utc() + timedelta(hours=2))
         gamma.fetch_events.return_value = [
             {
@@ -702,15 +699,15 @@ class TestDiscoverPreciseMode:
             config={
                 "games": ["lol"], "tag_slug": "esports",
                 "price_min": 0.05, "price_max": 0.95,
-                "live_window_hours": 48,
-                "max_match_duration_hours": 48,
+                "live_window_hours": 168,
+                "max_match_duration_hours": 168,
             },
         )
         result = svc.discover()
-        # fallback 模式：fetch_events 被调用
+        # Gamma API 模式：fetch_events 被调用
         gamma.fetch_events.assert_called_once()
         assert len(result.new_matches) == 1
-        assert "mode=fallback" in result.summary
+        assert "mode=gamma_api" in result.summary
 
 
 class TestPersistDiscoveredMatches:

@@ -377,9 +377,8 @@ class Monitor:
         if not matches:
             return
         now = now_utc()
-        # 监控超时：使用 monitor.match_timeout_minutes（默认240=4小时），不复用 discovery.max_match_duration_hours
-        monitor_cfg = self.config.get("monitor") or {}
-        max_match_duration_minutes = float(monitor_cfg.get("match_timeout_minutes", 240))
+        # 使用 discovery.max_match_duration_hours 作为监控超时（市场存续周期，非比赛时长）
+        max_match_duration_minutes = float(self.config.get("max_match_duration_hours", 168)) * 60
         for match in matches:
             try:
                 status = match.get("status")
@@ -446,15 +445,15 @@ class Monitor:
                     match_id, start_str,
                 )
                 return True, 0, 0, 0, None  # 返回 ok=True 但不采集数据
-            # 超时强制跳过：比赛开始后超过 match_timeout_minutes → 不再采集
+            # 超时跳过：市场存续超过 max_match_duration_hours → 不再采集
+            # 注意：start_time 是市场创建时间，非比赛开始时间
             if start_dt is not None and now >= start_dt:
-                monitor_cfg = self.config.get("monitor") or {}
-                timeout_min = float(monitor_cfg.get("match_timeout_minutes", 240))
+                max_duration_min = float(self.config.get("max_match_duration_hours", 168)) * 60
                 minutes_since_start = (now - start_dt).total_seconds() / 60.0
-                if minutes_since_start > timeout_min:
+                if minutes_since_start > max_duration_min:
                     self._logger.info(
-                        "比赛超时跳过采集 match=%s minutes_since_start=%.0f > %.0f",
-                        match_id, minutes_since_start, timeout_min,
+                        "市场超时跳过采集 match=%s minutes_since_start=%.0f > %.0f",
+                        match_id, minutes_since_start, max_duration_min,
                     )
                     return False, 0, 0, 0, None
 
