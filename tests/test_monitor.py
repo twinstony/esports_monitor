@@ -158,10 +158,7 @@ class TestCheckSingleMatch:
         )
         # fetch_event 返回 None
         with patch.object(monitor.gamma_client, "fetch_event", return_value=None):
-            monitor._check_single_match(m)
-        # 不应抛异常
-
-    def test_no_markets_returns(self, monitor, sample_match):
+            monitor._check_single_match(m)  # 不应抛异常
         m = sample_match
         monitor.storage.upsert_match(
             match_id=m["match_id"], slug=m["slug"], game=m["game"],
@@ -214,7 +211,7 @@ class TestCheckSingleMatch:
         with patch.object(monitor.gamma_client, "fetch_event", return_value={"slug": m["slug"]}), \
              patch.object(monitor.gamma_client, "parse_match_markets", return_value=[market]), \
              patch.object(monitor.clob_client, "get_token_id_and_orderbook", return_value=(None, None)):
-            ok, price_n, ob_n, alert_n = monitor._check_single_match(
+            ok, price_n, ob_n, alert_n, _details = monitor._check_single_match(
                 monitor.storage.get_match(m["match_id"])
             )
         # ok=True 但不采集数据
@@ -246,7 +243,7 @@ class TestCheckSingleMatch:
         with patch.object(monitor.gamma_client, "fetch_event", return_value={"slug": m["slug"]}), \
              patch.object(monitor.gamma_client, "parse_match_markets", return_value=[market]), \
              patch.object(monitor.clob_client, "get_token_id_and_orderbook", return_value=(None, None)):
-            ok, price_n, ob_n, alert_n = monitor._check_single_match(
+            ok, price_n, ob_n, alert_n, _details = monitor._check_single_match(
                 monitor.storage.get_match(m["match_id"])
             )
         # ok=False，不采集数据
@@ -270,7 +267,7 @@ class TestCheckSingleMatch:
         with patch.object(monitor.gamma_client, "fetch_event", return_value={"slug": m["slug"]}), \
              patch.object(monitor.gamma_client, "parse_match_markets", return_value=[market]), \
              patch.object(monitor.clob_client, "get_token_id_and_orderbook", return_value=(None, None)):
-            ok, price_n, ob_n, alert_n = monitor._check_single_match(
+            ok, price_n, ob_n, alert_n, _details = monitor._check_single_match(
                 monitor.storage.get_match(m["match_id"])
             )
         assert ok is True
@@ -895,7 +892,7 @@ class TestHeartbeatIntegration:
         with patch.object(monitor, "_reload_config_if_changed"), \
              patch.object(monitor, "_check_and_run_discovery"), \
              patch.object(monitor, "_update_live_status"), \
-             patch.object(monitor, "_check_single_match", return_value=(True, 2, 1, 0)), \
+             patch.object(monitor, "_check_single_match", return_value=(True, 2, 1, 0, None)), \
              patch.object(monitor, "_settle_ended_matches"), \
              patch.object(monitor, "_check_and_run_archive"), \
              patch.object(monitor, "_check_and_send_status_report"), \
@@ -924,7 +921,7 @@ class TestHeartbeatIntegration:
         with patch.object(monitor, "_reload_config_if_changed"), \
              patch.object(monitor, "_check_and_run_discovery"), \
              patch.object(monitor, "_update_live_status"), \
-             patch.object(monitor, "_check_single_match", return_value=(True, 0, 0, 0)), \
+             patch.object(monitor, "_check_single_match", return_value=(True, 0, 0, 0, None)), \
              patch.object(monitor, "_settle_ended_matches"), \
              patch.object(monitor, "_check_and_run_archive"), \
              patch.object(monitor, "_check_and_send_status_report"), \
@@ -946,7 +943,7 @@ class TestHeartbeatIntegration:
         with patch.object(monitor, "_reload_config_if_changed"), \
              patch.object(monitor, "_check_and_run_discovery"), \
              patch.object(monitor, "_update_live_status"), \
-             patch.object(monitor, "_check_single_match", return_value=(True, 0, 0, 0)), \
+             patch.object(monitor, "_check_single_match", return_value=(True, 0, 0, 0, None)), \
              patch.object(monitor, "_settle_ended_matches"), \
              patch.object(monitor, "_check_and_run_archive"), \
              patch.object(monitor, "_check_and_send_status_report"), \
@@ -1182,8 +1179,8 @@ class TestCheckSingleMatchReturnTuple:
              patch.object(monitor.clob_client, "get_token_id_and_orderbook", return_value=(None, None)):
             result = monitor._check_single_match(m)
             assert isinstance(result, tuple)
-            assert len(result) == 4
-            ok, price_n, ob_n, alert_n = result
+            assert len(result) == 5
+            ok, price_n, ob_n, alert_n, _details = result
             assert ok is True
             assert price_n == 2  # 两条价格快照
             assert ob_n == 0  # 无盘口
@@ -1194,7 +1191,7 @@ class TestCheckSingleMatchReturnTuple:
         m = sample_match
         with patch.object(monitor.gamma_client, "fetch_event", return_value=None):
             result = monitor._check_single_match(m)
-            assert result == (False, 0, 0, 0)
+            assert result == (False, 0, 0, 0, None)
 
     def test_exception_returns_false_with_partial_counts(self, monitor, sample_match):
         """中途异常应返回部分统计。"""

@@ -273,6 +273,7 @@ class TelegramNotifier:
         elapsed_seconds: float,
         next_interval_seconds: int,
         alerts_sent: int = 0,
+        live_details: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
         """发送主循环心跳（每轮结束发送）。
 
@@ -284,6 +285,7 @@ class TelegramNotifier:
             elapsed_seconds: 本轮耗时（秒）
             next_interval_seconds: 下次循环等待秒数
             alerts_sent: 本轮发送的形态信号告警数
+            live_details: 本轮监控的比赛详情列表
         """
         # 状态标识：无失败=健康；少量=警告；大量=异常
         if failed_count == 0:
@@ -303,9 +305,27 @@ class TelegramNotifier:
             f"失败次数: {failed_count}",
             f"本轮耗时: {elapsed_seconds:.1f}s",
             f"下次间隔: {next_interval_seconds}s",
-            "━━━━━━━━━━━━━━━━━━━━━",
-            f"⏰ {to_beijing_str(now_utc())} 北京时间",
         ]
+
+        # 展示本轮监控的比赛详情
+        if live_details:
+            lines.append("━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"📊 <b>监控中比赛 ({len(live_details)} 场)</b>")
+            for d in live_details:
+                game_tag = f"[{d.get('game', '?')}]"
+                team_a = d.get("team_a", "?")
+                team_b = d.get("team_b", "?")
+                pa = d.get("price_a")
+                pb = d.get("price_b")
+                msm = d.get("minutes_since_start")
+                ob = d.get("orderbook_snapshots", 0)
+                price_str = f"A={pa:.4f} B={pb:.4f}" if pa is not None and pb is not None else "价格获取中"
+                min_str = f"{msm:.0f}min" if msm is not None else "?min"
+                lines.append(f"  {game_tag} {team_a} vs {team_b}")
+                lines.append(f"    {price_str} | 赛中 {min_str} | 盘口+{ob}")
+
+        lines.append("━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"⏰ {to_beijing_str(now_utc())} 北京时间")
         return self.send_message("\n".join(lines))
 
     # ------------------------------------------------------------------

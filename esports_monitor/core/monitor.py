@@ -40,6 +40,7 @@ from ..morphology.repository import MorphologyRepository
 from ..morphology.signals import load_backtest_stats
 from ..morphology.simulator import MorphologySimulator
 from ..notification.telegram import TelegramNotifier, create_notifier_from_config
+from ..notification.webhook import WebhookNotifier, create_webhook_notifier_from_config
 from ..utils.time_utils import from_utc_iso, now_utc, to_utc_iso
 
 ARCHIVE_TASK_NAME = "data_archive"
@@ -133,6 +134,7 @@ class Monitor:
 
         # 通知
         self.notifier = create_notifier_from_config(self.config, logger=self._logger)
+        self.webhook_notifier = create_webhook_notifier_from_config(self.config, logger=self._logger)
 
     # ------------------------------------------------------------------
     # 主循环
@@ -162,6 +164,7 @@ class Monitor:
                 "orderbook_snapshots": 0,
                 "failed": 0,
                 "alerts_sent": 0,
+                "live_details": [],
             }
             try:
                 # 1. 热重载配置检查
@@ -174,13 +177,15 @@ class Monitor:
                 live_matches = self.storage.get_live_matches()
                 self._update_live_status(live_matches)
                 for match in live_matches:
-                    ok, price_n, ob_n, alert_n = self._check_single_match(match)
+                    ok, price_n, ob_n, alert_n, details = self._check_single_match(match)
                     round_stats["processed"] += 1
                     if not ok:
                         round_stats["failed"] += 1
                     round_stats["price_snapshots"] += price_n
                     round_stats["orderbook_snapshots"] += ob_n
                     round_stats["alerts_sent"] += alert_n
+                    if details:
+                        round_stats["live_details"].append(details)
 
                 # 4. 检查已结束比赛的结算
                 self._settle_ended_matches()
@@ -239,6 +244,7 @@ class Monitor:
             elapsed_seconds=elapsed,
             next_interval_seconds=next_wait,
             alerts_sent=round_stats.get("alerts_sent", 0),
+            live_details=round_stats.get("live_details", []),
         )
 
     def stop(self) -> None:
@@ -371,7 +377,9 @@ class Monitor:
         if not matches:
             return
         now = now_utc()
-        max_match_duration_minutes = float(self.config.get("discovery", {}).get("max_match_duration_hours", 24)) * 60
+        # 监控超时：使用 monitor.match_timeout_minutes（默认240=4小时），不复用 discovery.max_match_duration_hours
+        monitor_cfg = self.config.get("monitor") or {}
+        max_match_duration_minutes = float(monitor_cfg.get("match_timeout_minutes", 240))
         for match in matches:
             try:
                 status = match.get("status")
@@ -406,14 +414,15 @@ class Monitor:
 
     def _check_single_match(
         self, match: Dict[str, Any]
-    ) -> Tuple[bool, int, int, int]:
+    ) -> Tuple[bool, int, int, int, Optional[Dict[str, Any]]]:
         """对单场比赛执行一轮检查。
 
         只对真正 live（已开始且未结束）的比赛采集数据和形态检测。
         未开始的比赛（now < start_time）跳过数据采集。
 
         Returns:
-            (ok, price_snapshot_count, orderbook_snapshot_count, alerts_sent)
+            (ok, price_snapshot_count, orderbook_snapshot_count, alerts_sent, details)
+            details: 比赛详情 dict（price_a, price_b, minutes_since_start 等），无数据时为 None
         """
         match_id = match.get("match_id") or ""
         slug = match.get("slug") or ""
@@ -429,22 +438,33 @@ class Monitor:
             end_dt = from_utc_iso(end_str) if end_str else None
             # 已结束 → 跳过（状态应由 _update_live_status 处理为 ended）
             if end_dt is not None and now > end_dt:
-                return False, 0, 0, 0
+                return False, 0, 0, 0, None
             # 未开始 → 跳过数据采集和形态检测
             if start_dt is not None and now < start_dt:
                 self._logger.debug(
                     "比赛未开始，跳过 cid=%s start=%s",
                     match_id, start_str,
                 )
-                return True, 0, 0, 0  # 返回 ok=True 但不采集数据
+                return True, 0, 0, 0, None  # 返回 ok=True 但不采集数据
+            # 超时强制跳过：比赛开始后超过 match_timeout_minutes → 不再采集
+            if start_dt is not None and now >= start_dt:
+                monitor_cfg = self.config.get("monitor") or {}
+                timeout_min = float(monitor_cfg.get("match_timeout_minutes", 240))
+                minutes_since_start = (now - start_dt).total_seconds() / 60.0
+                if minutes_since_start > timeout_min:
+                    self._logger.info(
+                        "比赛超时跳过采集 match=%s minutes_since_start=%.0f > %.0f",
+                        match_id, minutes_since_start, timeout_min,
+                    )
+                    return False, 0, 0, 0, None
 
             # 1. 获取 Gamma 价格
             event = self.gamma_client.fetch_event(slug)
             if not event:
-                return False, 0, 0, 0
+                return False, 0, 0, 0, None
             markets = self.gamma_client.parse_match_markets(event)
             if not markets:
-                return False, 0, 0, 0
+                return False, 0, 0, 0, None
 
             now_iso = to_utc_iso(now_utc())
             target_market = None
@@ -453,7 +473,7 @@ class Monitor:
                     target_market = m
                     break
             if not target_market:
-                return False, 0, 0, 0
+                return False, 0, 0, 0, None
 
             # 2. 写入价格快照
             ok1 = self.storage.insert_price_snapshot(
@@ -474,7 +494,8 @@ class Monitor:
                 )
                 winning_team = match.get("team_a") if target_market.price_a >= 0.99 else match.get("team_b")
                 self.storage.update_match_status(match_id, "ended", winning_team=winning_team)
-                return True, price_n, 0, 0
+                _details = self._build_match_details(match, target_market, start_dt, now, ob_n)
+                return True, price_n, 0, 0, _details
 
             # 3. 获取 CLOB 盘口并写入快照
             ob_n = self._fetch_and_save_orderbook(match, target_market, now_iso)
@@ -483,8 +504,40 @@ class Monitor:
             if self.morphology_detector and (self.config.get("morphology") or {}).get("enabled", True):
                 alert = self.morphology_detector.detect(match)
                 if alert and alert.status == "normal" and alert.strongest_signal:
+                    sig = alert.strongest_signal
                     if self.notifier.send_signal_alert(alert):
                         alert_n = 1
+                    # webhook: 发送信号告警 + 模拟开单
+                    if self.webhook_notifier.can_send():
+                        self.webhook_notifier.send_signal_alert({
+                            "match_id": match_id,
+                            "slug": slug,
+                            "game": match.get("game") or "",
+                            "team_a": match.get("team_a") or "",
+                            "team_b": match.get("team_b") or "",
+                            "signal_name": sig.signal_name,
+                            "window_label": sig.window_label,
+                            "buy_team": sig.buy_team,
+                            "buy_price": sig.buy_price,
+                            "signal_strength": sig.signal_strength,
+                            "minutes_since_start": sig.minutes_since_start,
+                        })
+                        if alert.trade_opened and alert.trade_id:
+                            self.webhook_notifier.send_trade_opened({
+                                "trade_id": alert.trade_id,
+                                "match_id": match_id,
+                                "slug": slug,
+                                "game": match.get("game") or "",
+                                "team_a": match.get("team_a") or "",
+                                "team_b": match.get("team_b") or "",
+                                "signal_name": sig.signal_name,
+                                "window_label": sig.window_label,
+                                "buy_team": sig.buy_team,
+                                "buy_price": sig.buy_price,
+                                "quantity": (self.morphology_simulator.notional_usd / sig.buy_price) if sig.buy_price > 0 else 0,
+                                "notional_usd": self.morphology_simulator.notional_usd,
+                                "opened_at": to_utc_iso(now_utc()),
+                            })
                 elif alert and alert.status != "normal":
                     # 形态跳过原因通知
                     self._notify_morphology_skipped(match, alert)
@@ -494,11 +547,36 @@ class Monitor:
                     match, reason="disabled", detail="morphology.enabled=False"
                 )
 
-            return True, price_n, ob_n, alert_n
+            return True, price_n, ob_n, alert_n, self._build_match_details(match, target_market, start_dt, now, ob_n)
 
         except Exception as exc:
             self._logger.error("检查比赛异常 %s: %s", match_id, exc)
-            return False, price_n, ob_n, alert_n
+            return False, price_n, ob_n, alert_n, None
+
+    def _build_match_details(
+        self,
+        match: Dict[str, Any],
+        target_market: Any,
+        start_dt: Any,
+        now: Any,
+        ob_n: int,
+    ) -> Dict[str, Any]:
+        """构建比赛详情 dict，用于心跳展示。"""
+        minutes_since_start = None
+        if start_dt and now:
+            minutes_since_start = round((now - start_dt).total_seconds() / 60.0, 1)
+        return {
+            "match_id": match.get("match_id") or "",
+            "slug": match.get("slug") or "",
+            "game": match.get("game") or "",
+            "team_a": match.get("team_a") or "",
+            "team_b": match.get("team_b") or "",
+            "price_a": round(target_market.price_a, 4) if target_market else None,
+            "price_b": round(target_market.price_b, 4) if target_market else None,
+            "minutes_since_start": minutes_since_start,
+            "orderbook_snapshots": ob_n,
+            "status": match.get("status") or "",
+        }
 
     def _notify_morphology_skipped(
         self,
