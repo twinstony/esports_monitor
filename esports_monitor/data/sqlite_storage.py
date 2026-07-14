@@ -813,6 +813,76 @@ class SQLiteStorage:
             self._logger.error("get_daily_trade_stats 失败: %s", exc)
             return {"total": 0, "settled": 0, "wins": 0, "losses": 0, "total_pnl": 0.0}
 
+    def get_recent_trades_with_details(self, since_iso: str) -> List[Dict[str, Any]]:
+        """获取自 since_iso 以来开仓的模拟交易逐单详情（含信号依据与比赛信息）。
+
+        Args:
+            since_iso: UTC ISO 时间字符串，查询 opened_at >= since_iso 的交易
+
+        Returns:
+            [{"id", "match_id", "game", "team_a", "team_b", "buy_team", "buy_price",
+              "notional_usd", "opened_at", "settled", "pnl_usd", "settled_at",
+              "signal_name", "window_label", "minutes_since_start"}, ...]
+            按 opened_at 升序排列。
+        """
+        try:
+            with self._connect(row_factory=True) as conn:
+                cur = conn.execute(
+                    """
+                    SELECT
+                        t.id AS id,
+                        t.match_id AS match_id,
+                        m.game AS game,
+                        m.team_a AS team_a,
+                        m.team_b AS team_b,
+                        t.buy_team AS buy_team,
+                        t.buy_price AS buy_price,
+                        t.notional_usd AS notional_usd,
+                        t.opened_at AS opened_at,
+                        t.settled AS settled,
+                        t.pnl_usd AS pnl_usd,
+                        t.settled_at AS settled_at,
+                        s.signal_name AS signal_name,
+                        s.window_label AS window_label,
+                        s.minutes_since_start AS minutes_since_start
+                    FROM morphology_trades t
+                    LEFT JOIN morphology_signals s ON t.signal_id = s.id
+                    LEFT JOIN matches m ON t.match_id = m.match_id
+                    WHERE t.opened_at >= ?
+                    ORDER BY t.opened_at ASC
+                    """,
+                    (since_iso,),
+                )
+                return [dict(r) for r in cur.fetchall()]
+        except Exception as exc:
+            self._logger.error("get_recent_trades_with_details 失败: %s", exc)
+            return []
+
+    def get_recent_monitored_match_count(self, since_iso: str) -> int:
+        """获取自 since_iso 以来有价格快照记录的比赛数（即被监控的比赛数）。
+
+        Args:
+            since_iso: UTC ISO 时间字符串
+
+        Returns:
+            比赛数量
+        """
+        try:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    """
+                    SELECT COUNT(DISTINCT match_id) AS cnt
+                    FROM price_snapshots
+                    WHERE recorded_at >= ?
+                    """,
+                    (since_iso,),
+                )
+                row = cur.fetchone()
+                return int(row[0]) if row else 0
+        except Exception as exc:
+            self._logger.error("get_recent_monitored_match_count 失败: %s", exc)
+            return 0
+
     # ------------------------------------------------------------------
     # morphology_cooldown 表操作
     # ------------------------------------------------------------------

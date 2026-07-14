@@ -965,12 +965,17 @@ class Monitor:
         )
 
     def _check_and_send_daily_trade_summary(self) -> None:
-        """发送每日模拟开单总结（每天一次，task_runs 去重）。
+        """发送每日运行报告（每天一次，task_runs 去重）。
 
         发送条件：
-        1. 当日有交易记录
+        1. 时间在 00:00-02:00 UTC（北京时间 08:00-10:00）之间
         2. 当天尚未发送过
-        3. 时间在 00:00-02:00 UTC（北京时间 08:00-10:00）之间
+
+        报告内容：
+        - 过去 24 小时监控的比赛数
+        - 过去 24 小时模拟开单的结算情况、开单数、每单价格/依据/PnL
+        - 累计统计与分组统计
+        - 逐单详情按 TG 消息字符上限分多条发送
         """
         tg_cfg = (self.config.get("notification") or {}).get("telegram") or {}
         if not tg_cfg.get("status_report_enabled", True):
@@ -995,11 +1000,35 @@ class Monitor:
             self._logger.error("检查每日总结去重异常: %s", exc)
 
         try:
-            daily_stats = self.storage.get_daily_trade_stats(date_str)
+            # 查询过去 24 小时数据
+            period_hours = 24
+            since_dt = now - timedelta(hours=period_hours)
+            since_iso = to_utc_iso(since_dt)
+
+            trades_detail = self.storage.get_recent_trades_with_details(since_iso)
+            monitored_count = self.storage.get_recent_monitored_match_count(since_iso)
             cumulative_stats = self.morphology_repo.get_trade_stats()
 
-            # 当日无交易则跳过
-            if daily_stats.get("total", 0) == 0:
+            # 由逐单详情聚合出周期统计
+            daily_stats = {
+                "total": len(trades_detail),
+                "settled": 0,
+                "wins": 0,
+                "losses": 0,
+                "total_pnl": 0.0,
+            }
+            for t in trades_detail:
+                if t.get("settled"):
+                    daily_stats["settled"] += 1
+                    pnl = t.get("pnl_usd") or 0.0
+                    if pnl > 0:
+                        daily_stats["wins"] += 1
+                    else:
+                        daily_stats["losses"] += 1
+                    daily_stats["total_pnl"] += pnl
+
+            # 无交易且无监控比赛则跳过（避免空报告）
+            if daily_stats["total"] == 0 and monitored_count == 0:
                 return
 
             grouped_stats = {
@@ -1012,12 +1041,18 @@ class Monitor:
                 date_str=date_str,
                 daily_stats=daily_stats,
                 cumulative_stats=cumulative_stats,
+                monitored_count=monitored_count,
+                trades_detail=trades_detail,
                 grouped_stats=grouped_stats,
+                period_hours=period_hours,
             )
 
             # 记录任务运行
-            summary = f"date={date_str} trades={daily_stats['total']} pnl={daily_stats['total_pnl']:.2f}"
+            summary = (
+                f"date={date_str} monitored={monitored_count} "
+                f"trades={daily_stats['total']} pnl={daily_stats['total_pnl']:.2f}"
+            )
             self.storage.mark_task_run(DAILY_TRADE_SUMMARY_TASK_NAME, summary)
-            self._logger.info("每日模拟开单总结已发送: %s", summary)
+            self._logger.info("每日运行报告已发送: %s", summary)
         except Exception as exc:
-            self._logger.error("发送每日模拟开单总结异常: %s", exc)
+            self._logger.error("发送每日运行报告异常: %s", exc)

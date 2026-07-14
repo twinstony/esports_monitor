@@ -476,23 +476,36 @@ class TelegramNotifier:
     # 每日模拟开单总结
     # ------------------------------------------------------------------
 
+    # TG 单条消息字符上限（留余量应对 HTML 标签）
+    TG_MSG_LIMIT = 3800
+
     def send_daily_trade_summary(
         self,
         date_str: str,
         daily_stats: Dict[str, Any],
         cumulative_stats: Dict[str, Any],
+        monitored_count: int = 0,
+        trades_detail: Optional[List[Dict[str, Any]]] = None,
         grouped_stats: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        period_hours: int = 24,
     ) -> bool:
-        """发送每日模拟开单总结。
+        """发送每日模拟开单总结（支持分多条发送）。
 
         Args:
-            date_str: 日期（YYYY-MM-DD）
-            daily_stats: 当日统计 {"total": N, "settled": N, "wins": N, "losses": N, "total_pnl": 0.0}
+            date_str: 报告日期标签（YYYY-MM-DD）
+            daily_stats: 过去 period_hours 统计
+                {"total", "settled", "wins", "losses", "total_pnl"}
             cumulative_stats: 累计统计（同结构）
-            grouped_stats: 分组统计（按信号类型/游戏/窗口）
+            monitored_count: 过去 period_hours 监控的比赛数
+            trades_detail: 逐单详情列表，每项含
+                {"opened_at", "game", "team_a", "team_b", "buy_team", "buy_price",
+                 "signal_name", "window_label", "settled", "pnl_usd", ...}
+            grouped_stats: 分组统计（按信号/游戏/窗口）
+            period_hours: 统计周期（小时），用于显示
         """
         dt = daily_stats
         ct = cumulative_stats
+        trades_detail = trades_detail or []
 
         dt_total = dt.get("total", 0)
         dt_settled = dt.get("settled", 0)
@@ -508,13 +521,16 @@ class TelegramNotifier:
         ct_pnl = ct.get("total_pnl", 0.0)
         ct_win_rate = (ct_wins / ct_settled * 100) if ct_settled > 0 else 0.0
 
+        # ---- 第一条：概要 ----
         lines = [
-            f"📊 <b>[每日模拟开单总结 {date_str}]</b>",
+            f"📊 <b>[运行报告 {date_str}]</b>",
+            f"📋 统计周期: 过去 {period_hours} 小时",
             "━━━━━━━━━━━━━━━━━━━━━",
-            f"📅 当日交易: {dt_total} 笔",
+            f"🏟 监控比赛数: <b>{monitored_count}</b> 场",
+            f"📅 开单数: <b>{dt_total}</b> 笔",
             f"  已结算: {dt_settled} 笔",
             f"  胜率: {dt_win_rate:.1f}% ({dt_wins}胜{dt_losses}负)",
-            f"  PnL: {dt_pnl:+.2f} USD",
+            f"  PnL: <b>{dt_pnl:+.2f} USD</b>",
             "",
             f"🏆 累计交易: {ct_total} 笔",
             f"  已结算: {ct_settled} 笔",
@@ -524,7 +540,7 @@ class TelegramNotifier:
 
         if grouped_stats:
             lines.append("━━━━━━━━━━━━━━━━━━━━━")
-            lines.append("📈 分组统计:")
+            lines.append("📈 分组统计 (按已结算):")
             for key, title in [("by_signal", "按信号"), ("by_game", "按游戏"), ("by_window", "按窗口")]:
                 rows = grouped_stats.get(key) or []
                 settled_rows = [r for r in rows if r.get("settled", 0) > 0]
@@ -543,7 +559,56 @@ class TelegramNotifier:
 
         lines.append("━━━━━━━━━━━━━━━━━━━━━")
         lines.append(f"⏰ {to_beijing_str(now_utc())} 北京时间")
-        return self.send_message("\n".join(lines))
+
+        ok = self.send_message("\n".join(lines))
+        if not ok:
+            return False
+
+        # ---- 后续：逐单详情，按字符上限分条 ----
+        if not trades_detail:
+            return True
+
+        # 格式化每条交易为一行
+        trade_lines: List[str] = []
+        for i, t in enumerate(trades_detail, 1):
+            opened = _to_beijing_short(t.get("opened_at") or "")
+            game = (t.get("game") or "?").upper()
+            ta = _truncate(t.get("team_a") or "?", 10)
+            tb = _truncate(t.get("team_b") or "?", 10)
+            buy_team = _truncate(t.get("buy_team") or "?", 10)
+            buy_price = t.get("buy_price")
+            bp_str = f"{buy_price:.3f}" if isinstance(buy_price, (int, float)) else "?"
+            signal = _truncate(t.get("signal_name") or "?", 18)
+            window = t.get("window_label") or "?"
+            settled = t.get("settled")
+            pnl = t.get("pnl_usd")
+            if settled:
+                pnl_str = f"<b>{pnl:+.2f}</b>" if isinstance(pnl, (int, float)) else "?"
+                status_icon = "✅" if (isinstance(pnl, (int, float)) and pnl > 0) else "❌"
+            else:
+                pnl_str = "未结算"
+                status_icon = "⏳"
+            trade_lines.append(
+                f"{status_icon}#{i} [{opened}] {game}\n"
+                f"  {ta} vs {tb} → <b>买{buy_team}</b>@{bp_str}\n"
+                f"  依据: {signal} ({window}) | PnL: {pnl_str}"
+            )
+
+        # 拼接并按字符上限分条发送
+        header = f"📝 <b>逐单详情 ({len(trade_lines)} 笔)</b>\n" + "━" * 21 + "\n"
+        cur_msg = header
+        for line in trade_lines:
+            # +1 为换行符
+            if len(cur_msg) + len(line) + 1 > self.TG_MSG_LIMIT:
+                ok = self.send_message(cur_msg)
+                if not ok:
+                    return False
+                cur_msg = f"📝 <b>逐单详情（续）</b>\n" + "━" * 21 + "\n"
+            cur_msg += line + "\n"
+
+        if cur_msg.strip():
+            ok = self.send_message(cur_msg)
+        return ok
 
 
 def create_notifier_from_config(
