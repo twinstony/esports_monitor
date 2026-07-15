@@ -45,6 +45,12 @@ class MorphologyRepository:
                     minutes_since_start=alert.minutes_since_start,
                     predicted_win_prob=sig.predicted_win_prob,
                     predicted_pnl=sig.predicted_pnl,
+                    predicted_expectancy=sig.predicted_expectancy,
+                    historical_trades=sig.historical_trades,
+                    historical_profit_factor=sig.historical_profit_factor,
+                    signal_strength=sig.signal_strength,
+                    signal_label=sig.signal_label,
+                    morph_features=sig.morph_features,
                 )
                 if sig_id:
                     sig.id = sig_id

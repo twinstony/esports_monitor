@@ -34,6 +34,8 @@ class MatchMarket:
     question: str = ""
     # 关联 event 的 slug，便于后续 fetch_event
     slug: str = ""
+    # 实际比赛开始时间（eventStartTime / gameStartTime），区别于市场创建时间 startDate
+    event_start_time: Optional[str] = None
     # 原始市场数据（用于调试/扩展）
     raw: Optional[Dict[str, Any]] = None
 
@@ -144,24 +146,18 @@ class PolymarketClient:
     # Polymarket 电竞页面 URL
     ESPORTS_PAGE_URL = "https://polymarket.com/zh/esports"
 
-    def fetch_live_event_slugs(self) -> List[str]:
-        """从 Polymarket 电竞页面抓取正在直播的赛事 slug 列表。
+    # 游戏到 Polymarket 页面 slug 的映射
+    GAME_PAGE_SLUGS: Dict[str, str] = {
+        "cs2": "cs2",
+        "lol": "league-of-legends",
+        "dota2": "dota-2",
+    }
 
-        Gamma API 没有 isLive 字段，无法直接过滤正在直播的比赛。
-        Polymarket 网页的 Next.js SSR 数据中包含 "isLive":true 标记，
-        这是唯一能精确判断比赛是否正在直播的数据源。
-
-        流程：
-        1. 抓取 https://polymarket.com/zh/esports 页面 HTML
-        2. 解析 Next.js streaming 数据（self.__next_f.push）
-        3. 提取所有 "isLive":true 附近的 event slug
-
-        Returns:
-            正在直播的 event slug 列表；失败返回空列表。
-        """
+    def _fetch_esports_page_html(self, url: str) -> str:
+        """抓取 Polymarket 电竞页面 HTML，失败返回空字符串。"""
         try:
             resp = self._session.get(
-                self.ESPORTS_PAGE_URL,
+                url,
                 timeout=self.timeout,
                 headers={
                     "User-Agent": (
@@ -174,29 +170,45 @@ class PolymarketClient:
                 },
             )
             if resp.status_code != 200:
-                self._logger.error(
-                    "Polymarket 页面返回 status %s", resp.status_code
-                )
-                return []
-            html = resp.text
+                self._logger.error("Polymarket 页面返回 status %s url=%s", resp.status_code, url)
+                return ""
+            return resp.text
         except requests.exceptions.RequestException as exc:
-            self._logger.error("抓取 Polymarket 页面失败: %s", exc)
-            return []
+            self._logger.error("抓取 Polymarket 页面失败 url=%s: %s", url, exc)
+            return ""
 
-        # 提取 Next.js streaming 数据并合并
+    def _merge_next_f_push(self, html: str) -> str:
+        """从 HTML 中提取 Next.js streaming 数据并合并为单个字符串。"""
         push_data = re.findall(
             r'self\.__next_f\.push\(\[1,\s*"(.*?)"\]\)', html, re.DOTALL
         )
         if not push_data:
-            self._logger.warning("Polymarket 页面无 __next_f.push 数据")
-            return []
-
+            return ""
         combined = ""
         for d in push_data:
             try:
                 combined += d.encode().decode("unicode_escape")
             except Exception:
                 combined += d
+        return combined
+
+    def fetch_live_event_slugs(self) -> List[str]:
+        """从 Polymarket 电竞总页抓取正在直播的赛事 slug 列表。
+
+        Gamma API 没有 isLive 字段，无法直接过滤正在直播的比赛。
+        Polymarket 网页的 Next.js SSR 数据中包含 "isLive":true 标记，
+        这是唯一能精确判断比赛是否正在直播的数据源。
+
+        Returns:
+            正在直播的 event slug 列表；失败返回空列表。
+        """
+        html = self._fetch_esports_page_html(self.ESPORTS_PAGE_URL)
+        if not html:
+            return []
+        combined = self._merge_next_f_push(html)
+        if not combined:
+            self._logger.warning("Polymarket 页面无 __next_f.push 数据")
+            return []
 
         # 找所有 "isLive":true 的位置，向前搜索最近的 event slug
         live_slugs: List[str] = []
@@ -204,13 +216,10 @@ class PolymarketClient:
             m.start() for m in re.finditer(r'"isLive"\s*:\s*true', combined)
         ]
         for pos in islive_positions:
-            # 向前取 2000 字符找最近的 slug（event 对象内）
             context_before = combined[max(0, pos - 2000):pos]
             slug_matches = list(re.finditer(r'"slug"\s*:\s*"([^"]+)"', context_before))
             if slug_matches:
                 slug = slug_matches[-1].group(1)
-                # 过滤掉非比赛 slug（如 league season winner 等长期市场）
-                # 比赛 slug 通常含日期格式 -YYYY-MM-DD
                 if re.search(r"-\d{4}-\d{2}-\d{2}$", slug):
                     if slug not in live_slugs:
                         live_slugs.append(slug)
@@ -220,6 +229,51 @@ class PolymarketClient:
             len(live_slugs), live_slugs,
         )
         return live_slugs
+
+    def fetch_game_page_events(self, game: str) -> Dict[str, Dict[str, Any]]:
+        """抓取游戏专属页面，返回 {slug: {isLive, start_time}} 映射。
+
+        用于精确判断某游戏下每场比赛的实时状态与开始时间，
+        解决 Gamma API live 字段不准确的问题（如 CS2 无直播却被标记）。
+        """
+        page_slug = self.GAME_PAGE_SLUGS.get(game)
+        if not page_slug:
+            self._logger.warning("未知游戏 %s，无对应页面 slug", game)
+            return {}
+        url = f"{self.ESPORTS_PAGE_URL}/{page_slug}"
+        html = self._fetch_esports_page_html(url)
+        if not html:
+            return {}
+        combined = self._merge_next_f_push(html)
+        if not combined:
+            self._logger.warning("Polymarket 页面无 __next_f.push 数据 url=%s", url)
+            return {}
+
+        result: Dict[str, Dict[str, Any]] = {}
+        slug_pattern = re.compile(r'"slug"\s*:\s*"([^"]+?)"')
+        for m in slug_pattern.finditer(combined):
+            slug = m.group(1)
+            if not re.search(r"-\d{4}-\d{2}-\d{2}$", slug):
+                continue
+            if slug in result:
+                continue
+            # 在 slug 之后 1500 字符内查找 isLive 和 startTime
+            after = combined[m.end(): m.end() + 1500]
+            is_live = bool(re.search(r'"isLive"\s*:\s*true', after))
+            start_time = None
+            st_m = re.search(
+                r'"(?:startTime|eventStartTime|gameStartTime)"\s*:\s*"([^"]+)"',
+                after,
+            )
+            if st_m:
+                start_time = st_m.group(1)
+            result[slug] = {"isLive": is_live, "start_time": start_time}
+
+        self._logger.info(
+            "游戏 %s 页面提取到 %d 场赛事 (直播 %d)",
+            game, len(result), sum(1 for v in result.values() if v.get("isLive")),
+        )
+        return result
 
     # 子市场关键字：parse_match_markets 跳过包含这些关键字的市场
     _SUB_MARKET_KEYWORDS = (
@@ -283,6 +337,12 @@ class PolymarketClient:
                     if any(kw in question_lower for kw in self._SUB_MARKET_KEYWORDS):
                         continue
 
+                # 实际比赛开始时间：优先 eventStartTime，其次 gameStartTime
+                event_start_time = (
+                    m.get("eventStartTime")
+                    or m.get("gameStartTime")
+                )
+
                 markets.append(
                     MatchMarket(
                         condition_id=str(condition_id),
@@ -295,6 +355,7 @@ class PolymarketClient:
                         end_date=m.get("endDate"),
                         question=question,
                         slug=event.get("slug", ""),
+                        event_start_time=str(event_start_time) if event_start_time else None,
                         raw=m,
                     )
                 )

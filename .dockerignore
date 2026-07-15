@@ -15,4 +15,3 @@ webui/dist/
 .gitignore
 tests/
 *.md
-*.tar.gz

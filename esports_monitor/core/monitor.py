@@ -42,6 +42,7 @@ from ..morphology.simulator import MorphologySimulator
 from ..notification.telegram import TelegramNotifier, create_notifier_from_config
 from ..notification.webhook import WebhookNotifier, create_webhook_notifier_from_config
 from ..utils.time_utils import from_utc_iso, now_utc, to_utc_iso
+from ..utils.match_status import determine_match_status
 
 ARCHIVE_TASK_NAME = "data_archive"
 STATUS_REPORT_TASK_NAME = "status_report"
@@ -60,6 +61,7 @@ class Monitor:
         config: Optional[Dict[str, Any]] = None,
         base_dir: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
+        event_bus: Optional[Any] = None,
     ):
         self._base_dir = base_dir or os.getcwd()
         self._logger = logger or logging.getLogger(__name__)
@@ -69,7 +71,21 @@ class Monitor:
         self._config_signature: Tuple[Optional[float], Optional[float]] = (
             config_file_signature(self._base_dir)
         )
+        self._event_bus = event_bus
         self._init_components()
+
+    # ------------------------------------------------------------------
+    # 事件发布（WebSocket 推送）
+    # ------------------------------------------------------------------
+
+    def _publish_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """向 EventBus 发布事件（供 WebSocket 推送）。"""
+        if self._event_bus is None:
+            return
+        try:
+            self._event_bus.publish_sync(event_type, data)
+        except Exception as exc:
+            self._logger.debug("发布事件失败 %s: %s", event_type, exc)
 
     # ------------------------------------------------------------------
     # 组件初始化
@@ -215,6 +231,12 @@ class Monitor:
             elapsed = time.perf_counter() - round_start
             has_live = len(live_matches) > 0
             next_wait = interval_seconds if has_live else idle_interval_seconds
+            # 发布事件：系统心跳
+            self._publish_event("system_heartbeat", {
+                "processed": round_stats.get("processed", 0),
+                "elapsed": round(elapsed, 2),
+                "next_wait": next_wait,
+            })
             try:
                 self._send_heartbeat(round_stats, elapsed, next_wait)
             except Exception as exc:
@@ -303,6 +325,9 @@ class Monitor:
             mark_discovery_run(self.storage, summary=result.summary, logger=self._logger)
             # 推送市场发现报告
             self._send_discovery_report(result, new_count)
+            # 发布事件：市场更新
+            if new_count > 0:
+                self._publish_event("match_update", {"action": "discovery", "new_count": new_count})
         except Exception as exc:
             self._logger.error("市场发现异常: %s", exc)
             try:
@@ -372,45 +397,22 @@ class Monitor:
 
         额外检测：
         - 基于结束时间：end_time 已过 → ended
-        - 基于市场存续超时：start_time 至今超过 max_match_duration_hours（默认168h=7天）→ ended
+        - 基于游戏合理时长：start_time 至今超过上限 → ended
         - 基于价格：由 _check_single_match 检测价格极端值（>=0.99）→ ended
+        - 修正：live 但 start_time 在未来 → 回退为 discovered（start_time 被修正后）
         """
         if not matches:
             return
-        now = now_utc()
-        # 从 discovery 配置读取 max_match_duration_hours（市场存续周期上限）
-        discovery_cfg = self.config.get("discovery") or {}
-        max_match_duration_hours = float(discovery_cfg.get("max_match_duration_hours", 168))
-        max_match_duration_minutes = max_match_duration_hours * 60
+        status_cfg = (self.config.get("status") or {}).get("max_live_hours_by_game") or {}
         for match in matches:
             try:
                 status = match.get("status")
                 if status != "discovered" and status != "live":
                     continue
-                start_str = match.get("start_time")
-                end_str = match.get("end_time")
-                start_dt = from_utc_iso(start_str) if start_str else None
-                end_dt = from_utc_iso(end_str) if end_str else None
-
-                # 条件1：已过结束时间 → ended
-                if end_dt is not None and now > end_dt:
-                    self.storage.update_match_status(match["match_id"], "ended")
-                    continue
-
-                # 条件2：比赛开始后超过合理时间 → ended（防止end_time设置错误导致永久监控）
-                if start_dt is not None and now >= start_dt:
-                    minutes_since_start = (now - start_dt).total_seconds() / 60.0
-                    if minutes_since_start > max_match_duration_minutes:
-                        self._logger.info(
-                            "比赛超时强制结束 match=%s minutes_since_start=%.0f > %.0f",
-                            match["match_id"], minutes_since_start, max_match_duration_minutes,
-                        )
-                        self.storage.update_match_status(match["match_id"], "ended")
-                        continue
-
-                # 已开始未结束 → live
-                if status == "discovered" and start_dt is not None and now >= start_dt:
-                    self.storage.update_match_status(match["match_id"], "live")
+                next_status = determine_match_status(match, status_cfg)
+                if next_status != status and next_status in ("discovered", "live", "ended"):
+                    self.storage.update_match_status(match["match_id"], next_status)
+                    self._publish_event("match_update", {"match_id": match["match_id"], "status": next_status})
             except Exception as exc:
                 self._logger.debug("更新比赛状态失败 %s: %s", match.get("match_id"), exc)
 
@@ -537,6 +539,14 @@ class Monitor:
                     sig = alert.strongest_signal
                     if self.notifier.send_signal_alert(alert):
                         alert_n = 1
+                    # 发布事件：信号触发
+                    self._publish_event("signal_triggered", {
+                        "match_id": match_id,
+                        "signal_name": sig.signal_name,
+                        "window_label": sig.window_label,
+                        "buy_team": sig.buy_team,
+                        "buy_price": sig.buy_price,
+                    })
                     # webhook: 发送信号告警 + 模拟开单
                     if self.webhook_notifier.can_send():
                         self.webhook_notifier.send_signal_alert({
@@ -567,6 +577,14 @@ class Monitor:
                                 "quantity": (self.morphology_simulator.notional_usd / sig.buy_price) if sig.buy_price > 0 else 0,
                                 "notional_usd": self.morphology_simulator.notional_usd,
                                 "opened_at": to_utc_iso(now_utc()),
+                            })
+                            # 发布事件：交易开仓
+                            self._publish_event("trade_opened", {
+                                "trade_id": alert.trade_id,
+                                "match_id": match_id,
+                                "signal_name": sig.signal_name,
+                                "buy_team": sig.buy_team,
+                                "buy_price": sig.buy_price,
                             })
                 elif alert and alert.status != "normal" and alert.status != "no_signal":
                     # 形态跳过原因通知（no_signal 不通知，避免刷屏）
@@ -713,8 +731,16 @@ class Monitor:
                             winning_team=winning_team,
                             trade=trade,
                         )
+                        # 发布事件：交易结算
+                        self._publish_event("trade_settled", {
+                            "match_id": match_id,
+                            "trade_id": getattr(trade, "trade_id", None),
+                            "winning_team": winning_team,
+                            "pnl": getattr(trade, "pnl_usd", None),
+                        })
                 # 全部结算后更新比赛状态为 settled
                 self.storage.update_match_status(match_id, "settled")
+                self._publish_event("match_update", {"match_id": match_id, "status": "settled"})
         except Exception as exc:
             self._logger.error("结算已结束比赛异常: %s", exc)
 

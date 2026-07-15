@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import sqlite3
@@ -88,11 +89,17 @@ class SQLiteStorage:
                         end_time        TEXT,
                         status          TEXT DEFAULT 'discovered',
                         winning_team    TEXT,
+                        real_end_time   TEXT,
                         discovered_at   TEXT NOT NULL,
                         updated_at      TEXT NOT NULL
                     )
                     """
                 )
+                # 补充 real_end_time 列（已存在的表）
+                try:
+                    cur.execute("ALTER TABLE matches ADD COLUMN real_end_time TEXT")
+                except sqlite3.OperationalError:
+                    pass  # 列已存在
 
                 # 5.2.2 价格快照表
                 cur.execute(
@@ -164,11 +171,30 @@ class SQLiteStorage:
                         minutes_since_start REAL,
                         predicted_win_prob  REAL,
                         predicted_pnl       REAL,
+                        predicted_expectancy REAL,
+                        historical_trades    INTEGER,
+                        historical_profit_factor REAL,
+                        signal_strength     INTEGER DEFAULT 1,
+                        signal_label        TEXT,
+                        morph_features      TEXT,
                         detected_at         TEXT NOT NULL,
                         FOREIGN KEY (match_id) REFERENCES matches(match_id)
                     )
                     """
                 )
+                signal_columns = {
+                    "predicted_expectancy": "REAL",
+                    "historical_trades": "INTEGER",
+                    "historical_profit_factor": "REAL",
+                    "signal_strength": "INTEGER DEFAULT 1",
+                    "signal_label": "TEXT",
+                    "morph_features": "TEXT",
+                }
+                for col, ddl in signal_columns.items():
+                    try:
+                        cur.execute(f"ALTER TABLE morphology_signals ADD COLUMN {col} {ddl}")
+                    except sqlite3.OperationalError:
+                        pass
                 cur.execute(
                     "CREATE INDEX IF NOT EXISTS idx_morphology_signals_match "
                     "ON morphology_signals(match_id)"
@@ -292,7 +318,7 @@ class SQLiteStorage:
                     ON CONFLICT(match_id) DO UPDATE SET
                         slug = excluded.slug,
                         game = excluded.game,
-                        league = excluded.league,
+                        league = COALESCE(NULLIF(excluded.league, ''), matches.league),
                         team_a = excluded.team_a,
                         team_b = excluded.team_b,
                         condition_id = excluded.condition_id,
@@ -300,7 +326,11 @@ class SQLiteStorage:
                         token_id_b = COALESCE(excluded.token_id_b, matches.token_id_b),
                         start_time = COALESCE(excluded.start_time, matches.start_time),
                         end_time = COALESCE(excluded.end_time, matches.end_time),
-                        status = excluded.status,
+                        status = CASE
+                            WHEN excluded.status IN ('live', 'ended') AND matches.status NOT IN ('settled') THEN excluded.status
+                            WHEN matches.status IN ('live', 'ended', 'settled') AND excluded.status = 'discovered' THEN matches.status
+                            ELSE excluded.status
+                        END,
                         winning_team = COALESCE(excluded.winning_team, matches.winning_team),
                         updated_at = excluded.updated_at
                     """,
@@ -571,22 +601,36 @@ class SQLiteStorage:
         minutes_since_start: Optional[float] = None,
         predicted_win_prob: Optional[float] = None,
         predicted_pnl: Optional[float] = None,
+        predicted_expectancy: Optional[float] = None,
+        historical_trades: Optional[int] = None,
+        historical_profit_factor: Optional[float] = None,
+        signal_strength: Optional[int] = None,
+        signal_label: Optional[str] = None,
+        morph_features: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
         """插入形态信号，返回信号 id；失败返回 None。"""
         try:
+            morph_features_json = (
+                json.dumps(morph_features, ensure_ascii=False)
+                if morph_features is not None else None
+            )
             with self._connect() as conn:
                 cur = conn.execute(
                     """
                     INSERT INTO morphology_signals (
                         match_id, signal_name, window_label, buy_team, buy_price,
                         hours_before_end, minutes_since_start,
-                        predicted_win_prob, predicted_pnl, detected_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        predicted_win_prob, predicted_pnl, predicted_expectancy,
+                        historical_trades, historical_profit_factor, signal_strength,
+                        signal_label, morph_features, detected_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         match_id, signal_name, window_label, buy_team, buy_price,
                         hours_before_end, minutes_since_start,
-                        predicted_win_prob, predicted_pnl, detected_at,
+                        predicted_win_prob, predicted_pnl, predicted_expectancy,
+                        historical_trades, historical_profit_factor, signal_strength or 1,
+                        signal_label, morph_features_json, detected_at,
                     ),
                 )
                 conn.commit()

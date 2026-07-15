@@ -55,6 +55,9 @@ class DiscoveredMatch:
     best_ask_b: float = 0.0
     spread_b: float = 0.0
     bid_depth_b: float = 0.0
+    # 比赛状态（从 Polymarket event 的 live/ended 字段获取）
+    live: bool = False
+    ended: bool = False
 
 
 @dataclass
@@ -152,6 +155,18 @@ class MarketDiscoveryService:
             return result
 
         self._logger.info("市场发现：处理 %d 场赛事", len(events))
+
+        # 按游戏抓取 Polymarket 页面数据，获取权威的 isLive / startTime。
+        # Gamma API 的 live 字段不准确（如 CS2 无直播却被标记），网页 SSR
+        # 数据中的 isLive:true 是判断比赛是否正在进行的唯一可靠数据源。
+        page_events_by_game: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for game in games:
+            try:
+                page_events_by_game[game] = self.gamma_client.fetch_game_page_events(game)
+            except Exception as exc:
+                self._logger.debug("抓取游戏页面失败 %s: %s", game, exc)
+                page_events_by_game[game] = {}
+
         for event in events:
             try:
                 game = self._detect_game(event)
@@ -164,8 +179,9 @@ class MarketDiscoveryService:
                     result.skipped += 1
                     continue
 
+                page_events = page_events_by_game.get(game) or {}
                 for m in markets:
-                    discovered = self._screen_market(event, game, m)
+                    discovered = self._screen_market(event, game, m, page_events)
                     if discovered:
                         result.new_matches.append(discovered)
                     else:
@@ -214,7 +230,11 @@ class MarketDiscoveryService:
         return None
 
     def _screen_market(
-        self, event: Dict[str, Any], game: str, market: Any
+        self,
+        event: Dict[str, Any],
+        game: str,
+        market: Any,
+        page_events: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Optional[DiscoveredMatch]:
         """对单个市场执行 live 窗口 + 流动性筛选。
 
@@ -223,6 +243,9 @@ class MarketDiscoveryService:
         - live 时间窗口：end_date >= now 且 start_date <= now + live_window_hours
         - 比赛时长 <= max_match_duration_hours（排除赛季冠军等长期市场）
         - 若 CLOB 可用：买一深度 >= min_depth，价差 <= max_spread
+
+        page_events: Polymarket 游戏页面抓取的 {slug: {isLive, start_time}} 映射，
+        用于获取权威的 isLive 和实际比赛开始时间（优先于 Gamma API 的 live/startDate）。
         """
         price_min = float(self.config.get("price_min", 0.05))
         price_max = float(self.config.get("price_max", 0.95))
@@ -240,8 +263,17 @@ class MarketDiscoveryService:
         if not (price_min <= price_a <= price_max and price_min <= price_b <= price_max):
             return None
 
-        # live 时间窗口筛选
-        start_time_str = market.start_date or self._extract_start_time(event)
+        # 实际比赛开始时间：优先 Polymarket 网页数据（权威），其次 eventStartTime，
+        # 最后 startDate（市场创建时间，不准确）
+        event_slug = event.get("slug") or ""
+        page_info = (page_events or {}).get(event_slug) or {}
+        page_start_time = page_info.get("start_time")
+        start_time_str = (
+            page_start_time
+            or market.event_start_time
+            or self._extract_start_time(event)
+            or market.start_date
+        )
         end_time_str = market.end_date or event.get("endDate")
         start_dt = from_utc_iso(start_time_str) if start_time_str else None
         end_dt = from_utc_iso(end_time_str) if end_time_str else None
@@ -277,6 +309,13 @@ class MarketDiscoveryService:
         token_id_a = market.clob_token_ids[0] if len(market.clob_token_ids) >= 1 else None
         token_id_b = market.clob_token_ids[1] if len(market.clob_token_ids) >= 2 else None
 
+        # 从 Polymarket 网页提取权威 isLive 状态（优先于 Gamma API 的 live 字段）。
+        # Gamma API 的 live 字段不准确（如 CS2 无直播却被标记），网页 SSR 数据
+        # 中的 isLive:true 才是判断比赛是否正在进行的可靠依据。
+        page_is_live = bool(page_info.get("isLive", False))
+        event_live = page_is_live or bool(event.get("live", False))
+        event_ended = bool(event.get("ended", False))
+
         discovered = DiscoveredMatch(
             match_id=market.condition_id,
             slug=market.slug or event.get("slug", ""),
@@ -291,6 +330,8 @@ class MarketDiscoveryService:
             price_b=price_b,
             start_time=start_time,
             end_time=end_time,
+            live=event_live,
+            ended=event_ended,
         )
 
         # 若无 CLOB 客户端，跳过深度筛选，直接通过（用价格筛选作为最低门槛）
@@ -357,9 +398,19 @@ class MarketDiscoveryService:
 
     @staticmethod
     def _extract_start_time(event: Dict[str, Any]) -> Optional[str]:
-        """从 event 中提取开始时间。"""
-        # 优先 startDate
-        for key in ("startDate", "start_date", "startTime"):
+        """从 event 中提取实际比赛开始时间。
+
+        优先使用 startTime（比赛开始时间），
+        其次 eventStartTime，
+        最后才用 startDate（市场创建时间，不准确）。
+        """
+        # 优先 startTime（这是实际比赛开始时间）
+        for key in ("startTime", "eventStartTime", "eventDate"):
+            v = event.get(key)
+            if v:
+                return str(v)
+        # 最后才用 startDate（市场创建时间）
+        for key in ("startDate", "start_date"):
             v = event.get(key)
             if v:
                 return str(v)
@@ -373,6 +424,13 @@ def persist_discovered_matches(
 ) -> int:
     """将发现的比赛写入 matches 表（已存在则更新）。
 
+    根据 Polymarket event 的 live/ended 字段确定初始状态：
+    - ended=True → status="ended"
+    - live=True → status="live"
+    - 否则 → status="discovered"
+
+    注意：upsert_match 不会降级已有状态（如 live→discovered）。
+
     Returns:
         成功写入的数量。
     """
@@ -380,6 +438,13 @@ def persist_discovered_matches(
     count = 0
     for m in matches:
         try:
+            # 根据事件状态确定初始 status
+            if m.ended:
+                status = "ended"
+            elif m.live:
+                status = "live"
+            else:
+                status = "discovered"
             ok = storage.upsert_match(
                 match_id=m.match_id,
                 slug=m.slug,
@@ -392,7 +457,7 @@ def persist_discovered_matches(
                 token_id_b=m.token_id_b,
                 start_time=m.start_time,
                 end_time=m.end_time,
-                status="discovered",
+                status=status,
             )
             if ok:
                 count += 1

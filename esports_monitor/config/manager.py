@@ -143,6 +143,12 @@ def _apply_env_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
                 cursor[p] = {}
             cursor = cursor[p]
         cursor[path[-1]] = env_value
+
+    # 部署相关环境变量（Docker / 云平台）
+    db_path = os.environ.get("DB_PATH")
+    if db_path:
+        config.setdefault("database", {})["path"] = db_path
+
     return config
 
 
