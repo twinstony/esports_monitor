@@ -4,7 +4,8 @@ WORKDIR /build
 COPY webui/package.json webui/package-lock.json ./
 RUN npm ci
 COPY webui/ ./
-RUN npm run build
+ENV NODE_OPTIONS=--max-old-space-size=4096
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
 # ---- 后端运行 ----
 FROM python:3.12-slim
