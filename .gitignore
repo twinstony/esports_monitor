@@ -10,7 +10,6 @@ config.local.yaml
 config.yaml
 docs/backtest_results/
 webui/node_modules/
-webui/dist/
 .git/
 .gitignore
 tests/

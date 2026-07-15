@@ -1,12 +1,3 @@
-# ---- 前端构建 ----
-FROM node:20-slim AS frontend
-WORKDIR /build
-COPY webui/package.json webui/package-lock.json ./
-RUN npm ci
-COPY webui/ ./
-ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
-
 # ---- 后端运行 ----
 FROM python:3.12-slim
 WORKDIR /app
@@ -23,8 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY esports_monitor/ ./esports_monitor/
 COPY main.py config.example.yaml ./
 
-# 前端打包产物
-COPY --from=frontend /build/dist ./webui/dist
+# 前端打包产物（已在本地构建好）
+COPY webui/dist ./webui/dist
 
 # 数据持久化目录
 RUN mkdir -p /app/data
