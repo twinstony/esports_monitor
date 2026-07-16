@@ -421,8 +421,8 @@ class Monitor:
     ) -> Tuple[bool, int, int, int, Optional[Dict[str, Any]]]:
         """对单场比赛执行一轮检查。
 
-        只对真正 live（已开始且未结束）的比赛采集数据和形态检测。
-        未开始的比赛（now < start_time）跳过数据采集。
+        对已发现且未结束的比赛（含赛前 discovered 和赛中 live）采集价格与盘口数据。
+        赛前比赛也会抓取价格，便于 Dashboard 展示赔率走势。
 
         Returns:
             (ok, price_snapshot_count, orderbook_snapshot_count, alerts_sent, details)
@@ -434,7 +434,7 @@ class Monitor:
         ob_n = 0
         alert_n = 0
         try:
-            # 0. 时间窗口检查：未开始的比赛跳过数据采集和形态检测
+            # 0. 时间窗口检查：已结束的比赛跳过
             now = now_utc()
             start_str = match.get("start_time")
             end_str = match.get("end_time")
@@ -452,13 +452,6 @@ class Monitor:
                     match_id, real_end_str,
                 )
                 return False, 0, 0, 0, None
-            # 未开始 → 跳过数据采集和形态检测
-            if start_dt is not None and now < start_dt:
-                self._logger.debug(
-                    "比赛未开始，跳过 cid=%s start=%s",
-                    match_id, start_str,
-                )
-                return True, 0, 0, 0, None  # 返回 ok=True 但不采集数据
 
             # 1. 获取 Gamma 价格
             event = self.gamma_client.fetch_event(slug)
