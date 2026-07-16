@@ -45,9 +45,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "discovery": {
         "enabled": True,
-        "games": ["cs2", "dota2", "lol"],
-        "tag_ids": {"cs2": "", "dota2": "", "lol": ""},
+        # 默认仅监控 LoL（当前业务目标：先确保 LoL 数据准确）
+        "games": ["lol"],
+        "tag_ids": {"lol": ""},
+        "tag_slugs": ["lol", "league-of-legends"],
         "tag_slug": "esports",
+        "leagues": ["esports-world-cup"],
         "min_depth": 50,
         "max_spread": 0.05,
         "price_min": 0.05,

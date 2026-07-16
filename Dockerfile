@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 项目代码
 COPY esports_monitor/ ./esports_monitor/
-COPY main.py config.example.yaml ./
+COPY main.py config.yaml config.example.yaml ./
 COPY scripts/ ./scripts/
 
 # 前端打包产物（已在本地构建好）
