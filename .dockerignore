@@ -6,8 +6,8 @@ __pycache__/
 esports_history.db
 esports_monitor.log
 archives/
+# 本地机密配置不进镜像
 config.local.yaml
-config.yaml
 docs/backtest_results/
 webui/node_modules/
 .git/
