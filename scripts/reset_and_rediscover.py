@@ -32,7 +32,11 @@ import sqlite3
 import sys
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_DB = os.path.join(PROJECT_DIR, "esports_history.db")
+# 优先使用 DB_PATH 环境变量（容器部署时通常为 /app/data/esports_history.db），
+# 其次回退到项目根目录下的 esports_history.db
+DEFAULT_DB = os.environ.get("DB_PATH") or os.path.join(
+    PROJECT_DIR, "esports_history.db"
+)
 
 
 def _count(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
