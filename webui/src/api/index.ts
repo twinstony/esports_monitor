@@ -8,7 +8,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const api = axios.create({ baseURL: API_BASE_URL });
 
 // Matches
-export const fetchMatches = (params?: { status?: string; game?: string; days?: number }) =>
+export const fetchMatches = (params?: { status?: string; game?: string; team?: string; days?: number }) =>
   api.get('/matches', { params }).then(r => r.data);
 
 export const fetchMatch = (matchId: string) =>
@@ -21,7 +21,7 @@ export const fetchMatchOrderbook = (matchId: string) =>
   api.get(`/matches/${matchId}/orderbook`).then(r => r.data);
 
 // Trades
-export const fetchTrades = (params?: { settled?: number; game?: string; signal?: string; days?: number }) =>
+export const fetchTrades = (params?: { settled?: number; game?: string; signal?: string; team?: string; days?: number }) =>
   api.get('/trades', { params }).then(r => r.data);
 
 export const fetchTradeStats = (days?: number) =>

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Card, Table, Tabs, Tag, Row, Col, Statistic, Select, Space, Spin, Descriptions, Empty } from 'antd';
+import { Card, Table, Tabs, Tag, Row, Col, Statistic, Select, Space, Spin, Descriptions, Empty, Input, Alert, Button, Tooltip } from 'antd';
+import { ReloadOutlined, LinkOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import ReactECharts from 'echarts-for-react';
 import { fetchTrades, fetchTradeStats, fetchTradeStatsGrouped, fetchMatchPrices, fetchTrade } from '../api';
@@ -151,32 +152,52 @@ function Trades() {
   const [filterGame, setFilterGame] = useState('');
   const [filterSignal, setFilterSignal] = useState('');
   const [filterSettled, setFilterSettled] = useState<number | undefined>(undefined);
+  const [filterTeam, setFilterTeam] = useState<string>('');
+  const [apiError, setApiError] = useState<string>('');
 
   const load = useCallback(() => {
     setLoading(true);
-    const params: any = { days: 30 };
+    setApiError('');
+    const params: any = { days: 365 };
     if (filterGame) params.game = filterGame;
     if (filterSignal) params.signal = filterSignal;
     if (filterSettled !== undefined) params.settled = filterSettled;
+    if (filterTeam.trim()) params.team = filterTeam.trim();
     Promise.all([
-      fetchTrades(params),
-      fetchTradeStats(30),
-      fetchTradeStatsGrouped(groupBy, 30),
-    ]).then(([t, s, g]) => {
-      setTrades(t.trades || []);
-      setStats(s);
-      setGrouped(g.groups || []);
+      fetchTrades(params).catch(e => ({ trades: [], ok: false, error: String(e.message || e) })),
+      fetchTradeStats(365).catch(e => ({ ok: false, error: String(e.message || e) })),
+      fetchTradeStatsGrouped(groupBy, 365).catch(e => ({ groups: [], ok: false, error: String(e.message || e) })),
+    ]).then(([tr, s, g]) => {
+      setTrades(tr?.trades || []);
+      setStats(s || {});
+      setGrouped(g?.groups || []);
+      const errs = [tr?.ok === false ? tr.error : '', s?.ok === false ? s.error : '', g?.ok === false ? g.error : ''].filter(Boolean).join('; ');
+      if (errs) setApiError(errs);
     }).finally(() => setLoading(false));
-  }, [groupBy, filterGame, filterSignal, filterSettled]);
+  }, [groupBy, filterGame, filterSignal, filterSettled, filterTeam]);
 
   useEffect(() => { load(); }, [load]);
 
   const gameOptions = [...new Set(trades.map(t => t.game).filter(Boolean))];
   const signalOptions = [...new Set(trades.map(t => t.signal_name).filter(Boolean))];
 
+  // Polymarket 跳转链接渲染：将比赛名替换为可点击链接
+  const renderMatchCell = (_: any, r: any) => {
+    const url = r.polymarket_url;
+    const label = `${r.team_a || '?'} vs ${r.team_b || '?'}`;
+    if (!url) return label;
+    return (
+      <Tooltip title={t('trades.view_on_polymarket')}>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#1677ff' }}>
+          {label} <LinkOutlined />
+        </a>
+      </Tooltip>
+    );
+  };
+
   const columns = [
     { title: t('trades.id'), dataIndex: 'id', key: 'id', width: 50, sorter: (a: any, b: any) => a.id - b.id },
-    { title: t('trades.match'), key: 'match', width: 180, render: (_: any, r: any) => `${r.team_a || '?'} vs ${r.team_b || '?'}` },
+    { title: t('trades.match'), key: 'match', width: 200, render: renderMatchCell },
     { title: t('dashboard.game'), dataIndex: 'game', key: 'game', width: 70, filters: gameOptions.map(g => ({ text: g, value: g })), onFilter: (v: any, r: any) => r.game === v },
     { title: t('trades.signal'), dataIndex: 'signal_name', key: 'signal', width: 130, filters: signalOptions.map(s => ({ text: s, value: s })), onFilter: (v: any, r: any) => r.signal_name === v },
     { title: t('trades.window'), dataIndex: 'window_label', key: 'window', width: 70 },
@@ -226,7 +247,20 @@ function Trades() {
 
   return (
     <Spin spinning={loading}>
-      <h2>{t('trades.title')}</h2>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <h2 style={{ margin: 0 }}>{t('trades.title')}</h2>
+        <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>{t('common.refresh')}</Button>
+      </Space>
+
+      {apiError && (
+        <Alert
+          type="error"
+          message={`${t('trades.api_error')}: ${apiError}`}
+          description={t('trades.api_error_hint')}
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {statCards.map((s, i) => (
@@ -277,6 +311,15 @@ function Trades() {
                       { value: 0, label: t('trades.open') },
                       { value: 1, label: t('trades.win') },
                     ]}
+                  />
+                  <Input.Search
+                    placeholder={t('trades.team_filter_placeholder')}
+                    value={filterTeam}
+                    onChange={e => setFilterTeam(e.target.value)}
+                    onSearch={load}
+                    style={{ width: 220 }}
+                    allowClear
+                    enterButton={t('common.refresh')}
                   />
                 </Space>
                 <Table

@@ -33,7 +33,12 @@
     "ended": "已结束",
     "discovered": "已发现",
     "live_status": "进行中",
-    "minutes": "分钟"
+    "minutes": "分钟",
+    "team_filter": "队伍名称",
+    "team_filter_placeholder": "输入队伍名（不区分大小写）",
+    "view_on_polymarket": "在 Polymarket 查看",
+    "api_error": "接口异常",
+    "api_error_hint": "数据加载失败，请稍后刷新或检查后端日志"
   },
   "trades": {
     "title": "模拟开单监控",
@@ -72,7 +77,12 @@
     "loss": "亏",
     "group_key": "分组",
     "count": "交易数",
-    "pnl_total": "总PnL"
+    "pnl_total": "总PnL",
+    "team_filter": "队伍名称",
+    "team_filter_placeholder": "输入队伍名（不区分大小写）",
+    "view_on_polymarket": "在 Polymarket 查看",
+    "api_error": "接口异常",
+    "api_error_hint": "数据加载失败，请稍后刷新或检查后端日志"
   },
   "morphology": {
     "title": "形态分析",

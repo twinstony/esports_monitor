@@ -230,17 +230,29 @@ class PolymarketClient:
         )
         return live_slugs
 
-    def fetch_game_page_events(self, game: str) -> Dict[str, Dict[str, Any]]:
-        """抓取游戏专属页面，返回 {slug: {isLive, start_time}} 映射。
+    def fetch_game_page_events(
+        self, game: str, league: str = ""
+    ) -> Dict[str, Dict[str, Any]]:
+        """抓取游戏专属页面，返回 {slug: {isLive, start_time, league}} 映射。
 
         用于精确判断某游戏下每场比赛的实时状态与开始时间，
         解决 Gamma API live 字段不准确的问题（如 CS2 无直播却被标记）。
+
+        Args:
+            game: 游戏标识（cs2/lol/dota2）
+            league: 可选联赛 slug（如 "esports-world-cup"）。传入时抓取
+                联赛专属页 https://polymarket.com/zh/esports/{game_slug}/{league_slug}，
+                仅返回属于该联赛的赛事。留空时抓取游戏总页，返回该游戏下所有赛事。
         """
         page_slug = self.GAME_PAGE_SLUGS.get(game)
         if not page_slug:
             self._logger.warning("未知游戏 %s，无对应页面 slug", game)
             return {}
-        url = f"{self.ESPORTS_PAGE_URL}/{page_slug}"
+        # 联赛专属页：/esports/{game_slug}/{league_slug}
+        if league:
+            url = f"{self.ESPORTS_PAGE_URL}/{page_slug}/{league}"
+        else:
+            url = f"{self.ESPORTS_PAGE_URL}/{page_slug}"
         html = self._fetch_esports_page_html(url)
         if not html:
             return {}
@@ -267,11 +279,16 @@ class PolymarketClient:
             )
             if st_m:
                 start_time = st_m.group(1)
-            result[slug] = {"isLive": is_live, "start_time": start_time}
+            result[slug] = {
+                "isLive": is_live,
+                "start_time": start_time,
+                "league": league or "",
+            }
 
         self._logger.info(
-            "游戏 %s 页面提取到 %d 场赛事 (直播 %d)",
-            game, len(result), sum(1 for v in result.values() if v.get("isLive")),
+            "游戏 %s%s 页面提取到 %d 场赛事 (直播 %d)",
+            game, f"/{league}" if league else "", len(result),
+            sum(1 for v in result.values() if v.get("isLive")),
         )
         return result
 

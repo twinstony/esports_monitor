@@ -10,16 +10,18 @@ polymarket:
 # 市场发现
 discovery:
   enabled: true
-  games: [cs2, dota2, lol]
+  # 当前仅监控 LoL（先确保数据准确，后续再扩展 cs2/dota2）
+  games: [lol]
   tag_ids:
-    cs2: ""
-    dota2: ""
     lol: ""
   # 多 tag 查询：聚合所有 tag 下的赛事并去重
-  # 注意：cs2 tag 主要是长期预测市场（如"Will s1mple retire?"），
-  # 单场比赛在 counter-strike-2 tag 下；dota2 不存在，须用 dota-2
-  tag_slugs: [counter-strike-2, dota-2, lol, league-of-legends]
+  # 仅保留 LoL 相关 tag，移除 cs2/dota2
+  tag_slugs: [lol, league-of-legends]
   tag_slug: esports          # 向后兼容（tag_slugs 为空时使用）
+  # 联赛白名单：仅监控指定联赛 slug 的比赛（留空则监控所有联赛）
+  # 对应 Polymarket URL: /esports/{game_page_slug}/{league_slug}
+  # 示例: https://polymarket.com/zh/esports/league-of-legends/esports-world-cup
+  leagues: [esports-world-cup]
   live_window_hours: 48      # 允许发现未来 N 小时内开始的比赛（API + 客户端双重过滤）
   max_match_duration_hours: 48  # event 级别最大时长（排除赛季冠军等长期市场，单场赛事周期可能跨天）
   min_depth: 50             # 买一深度下限（USDC）

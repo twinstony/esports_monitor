@@ -1,7 +1,7 @@
 """信号相关 API。
 
 端点：
-- GET /api/signals        信号列表（30天限制）
+- GET /api/signals        信号列表（回溯天数限制）
 - GET /api/signals/types  6种信号类型定义（含中英文标签）
 """
 from __future__ import annotations
@@ -16,7 +16,8 @@ from ...utils.time_utils import now_utc, to_utc_iso
 
 router = APIRouter(tags=["signals"])
 
-DEFAULT_DAYS = 30
+# 默认数据回溯天数：使用 365 天
+DEFAULT_DAYS = 365
 
 
 def _get_deps(request: Request):
@@ -92,9 +93,9 @@ async def list_signals(
             cur = conn.execute(" ".join(sql_parts), params)
             signals = [dict(r) for r in cur.fetchall()]
 
-        return {"signals": signals, "total": len(signals)}
+        return {"signals": signals, "total": len(signals), "ok": True}
     except Exception as exc:
-        return {"signals": [], "total": 0, "error": str(exc)}
+        return {"signals": [], "total": 0, "ok": False, "error": str(exc)}
 
 
 @router.get("/signals/{signal_id}/series")
@@ -109,7 +110,7 @@ async def signal_series(signal_id: int, request: Request) -> Dict[str, Any]:
             )
             row = cur.fetchone()
         if not row:
-            return {"signal_id": signal_id, "error": "signal not found"}
+            return {"signal_id": signal_id, "error": "signal not found", "ok": False}
         match_id = dict(row).get("match_id") or ""
         match = deps.storage.get_match(match_id) or {}
         prices_a = deps.storage.get_price_snapshots(match_id, team="team_a")
@@ -121,9 +122,10 @@ async def signal_series(signal_id: int, request: Request) -> Dict[str, Any]:
             "team_b_name": match.get("team_b"),
             "team_a": [{"recorded_at": ts, "price": p} for ts, p in prices_a],
             "team_b": [{"recorded_at": ts, "price": p} for ts, p in prices_b],
+            "ok": True,
         }
     except Exception as exc:
-        return {"signal_id": signal_id, "error": str(exc)}
+        return {"signal_id": signal_id, "error": str(exc), "ok": False}
 
 
 @router.get("/signals/types")

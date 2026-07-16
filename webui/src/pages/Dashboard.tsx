@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Tabs, Card, Tag, Descriptions, Empty, Spin, Select, Space, Row, Col, Statistic } from 'antd';
+import { Tabs, Card, Tag, Descriptions, Empty, Spin, Select, Space, Row, Col, Statistic, Input, Alert, Button, Tooltip } from 'antd';
+import { ReloadOutlined, LinkOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import ReactECharts from 'echarts-for-react';
 import { fetchMatches, fetchMatchPrices, fetchMatchOrderbook, fetchSignals, fetchTrades } from '../api';
@@ -16,6 +17,7 @@ interface Match {
   status: string;
   winning_team: string;
   discovered_at: string;
+  polymarket_url?: string;
 }
 
 // 计算比赛窗口（early/mid/late）
@@ -25,10 +27,26 @@ function getWindowLabel(minutesSinceStart: number): { label: string; color: stri
   return { label: 'Late', color: 'red' };
 }
 
+// Polymarket 跳转链接组件：将比赛名称替换为可点击的链接
+function MatchTitleLink({ match }: { match: Match }) {
+  const { t } = useTranslation();
+  const url = match.polymarket_url;
+  if (!url) {
+    return <span>{match.team_a} vs {match.team_b}</span>;
+  }
+  return (
+    <Tooltip title={t('dashboard.view_on_polymarket')}>
+      <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#1677ff', fontWeight: 500 }}>
+        {match.team_a} vs {match.team_b} <LinkOutlined />
+      </a>
+    </Tooltip>
+  );
+}
+
 // 倒计时组件
 function Countdown({ startTime }: { startTime: string }) {
   const [timeLeft, setTimeLeft] = useState('');
-  
+
   useEffect(() => {
     const update = () => {
       const now = new Date().getTime();
@@ -47,7 +65,7 @@ function Countdown({ startTime }: { startTime: string }) {
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   }, [startTime]);
-  
+
   return <Tag color="cyan">{timeLeft}</Tag>;
 }
 
@@ -55,20 +73,24 @@ function Countdown({ startTime }: { startTime: string }) {
 function LiveMatchCard({ match }: { match: Match }) {
   const { t } = useTranslation();
   const [cooldown, setCooldown] = useState<any>(null);
-  
+  const [cooldownErr, setCooldownErr] = useState<string>('');
+
   useEffect(() => {
     // 检查冷却状态
     fetch(`/api/matches/${match.match_id}/cooldown`)
       .then(r => r.json())
-      .then(d => setCooldown(d))
-      .catch(() => {});
+      .then(d => {
+        setCooldown(d);
+        setCooldownErr(d?.ok === false ? (d.error || 'unknown error') : '');
+      })
+      .catch((e) => setCooldownErr(String(e)));
   }, [match.match_id]);
-  
+
   const startDt = match.start_time ? new Date(match.start_time).getTime() : 0;
   const now = new Date().getTime();
   const minutesSinceStart = startDt ? (now - startDt) / 60000 : 0;
   const windowInfo = getWindowLabel(minutesSinceStart);
-  
+
   return (
     <Card
       size="small"
@@ -77,7 +99,7 @@ function LiveMatchCard({ match }: { match: Match }) {
           <Tag color="green">LIVE</Tag>
           <Tag>{match.game}</Tag>
           <Tag color={windowInfo.color}>{windowInfo.label}</Tag>
-          <span>{match.team_a} vs {match.team_b}</span>
+          <MatchTitleLink match={match} />
           {cooldown?.in_cooldown && <Tag color="red">冷却中</Tag>}
         </Space>
       }
@@ -98,6 +120,11 @@ function LiveMatchCard({ match }: { match: Match }) {
                 <Tag color="orange">{cooldown.remaining_minutes?.toFixed(0) || 0} 分钟</Tag>
               </Descriptions.Item>
             )}
+            {cooldownErr && (
+              <Descriptions.Item label={t('dashboard.api_error')}>
+                <Tag color="red">{cooldownErr}</Tag>
+              </Descriptions.Item>
+            )}
           </Descriptions>
         </Col>
         <Col span={16}>
@@ -114,16 +141,29 @@ function LiveMatchCard({ match }: { match: Match }) {
 }
 
 function PriceChart({ matchId, teamA, teamB, showSignals = false }: { matchId: string; teamA?: string; teamB?: string; showSignals?: boolean }) {
+  const { t } = useTranslation();
   const [data, setData] = useState<{ team_a: any[]; team_b: any[] }>({ team_a: [], team_b: [] });
   const [signals, setSignals] = useState<any[]>([]);
+  const [error, setError] = useState<string>('');
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetchMatchPrices(matchId).then(d => setData({ team_a: d.team_a || [], team_b: d.team_b || [] })).catch(() => {});
-    if (showSignals) {
-      fetchSignals({ match_id: matchId }).then(d => setSignals(d.signals || [])).catch(() => {});
-    }
+    setLoaded(false);
+    setError('');
+    Promise.all([
+      fetchMatchPrices(matchId).catch(e => ({ team_a: [], team_b: [], ok: false, error: String(e.message || e) })),
+      showSignals
+        ? fetchSignals({ match_id: matchId }).catch(e => ({ signals: [], ok: false, error: String(e.message || e) }))
+        : Promise.resolve(null),
+    ]).then(([d, sig]) => {
+      setData({ team_a: d?.team_a || [], team_b: d?.team_b || [] });
+      if (d?.ok === false) setError(d.error || 'prices api failed');
+      if (sig) setSignals(sig.signals || []);
+    }).finally(() => setLoaded(true));
   }, [matchId, showSignals]);
 
+  if (!loaded) return <Spin size="small" />;
+  if (error) return <Alert type="error" message={`${t('dashboard.api_error')}: ${error}`} showIcon style={{ marginBottom: 8 }} />;
   if (!data.team_a.length && !data.team_b.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 
   const labelA = teamA || 'Team A';
@@ -144,7 +184,7 @@ function PriceChart({ matchId, teamA, teamB, showSignals = false }: { matchId: s
         type: 'scatter',
         symbolSize: 15,
         data: signals.map((s: any) => {
-          const idx = data.team_a.findIndex((p: any) => 
+          const idx = data.team_a.findIndex((p: any) =>
             p.recorded_at?.slice(0, 16) === s.detected_at?.slice(0, 16)
           );
           return [idx >= 0 ? idx : 0, s.buy_price || 0.5];
@@ -177,11 +217,23 @@ function PriceChart({ matchId, teamA, teamB, showSignals = false }: { matchId: s
 function OrderbookInfo({ matchId, teamA, teamB }: { matchId: string; teamA?: string; teamB?: string }) {
   const { t } = useTranslation();
   const [ob, setOb] = useState<any>({});
+  const [error, setError] = useState<string>('');
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetchMatchOrderbook(matchId).then(setOb).catch(() => {});
+    setLoaded(false);
+    setError('');
+    fetchMatchOrderbook(matchId)
+      .then(d => {
+        setOb(d);
+        if (d?.ok === false) setError(d.error || 'orderbook api failed');
+      })
+      .catch(e => setError(String(e.message || e)))
+      .finally(() => setLoaded(true));
   }, [matchId]);
 
+  if (!loaded) return <Spin size="small" />;
+  if (error) return <Alert type="error" message={`${t('dashboard.api_error')}: ${error}`} showIcon />;
   if (!ob.team_a && !ob.team_b) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 
   const labelA = teamA || 'Team A';
@@ -219,19 +271,25 @@ function MatchCard({ match }: { match: Match }) {
   function MatchSignalsTrades({ matchId }: { matchId: string }) {
     const [signals, setSignals] = useState<any[]>([]);
     const [trades, setTrades] = useState<any[]>([]);
-    
+    const [err, setErr] = useState<string>('');
+
     useEffect(() => {
-      fetchSignals({ match_id: matchId }).then(d => setSignals(d.signals || [])).catch(() => {});
-      fetchTrades({}).then(d => {
-        const matchTrades = (d.trades || []).filter((t: any) => t.match_id === matchId);
+      Promise.all([
+        fetchSignals({ match_id: matchId }).catch(e => ({ signals: [], ok: false, error: String(e.message || e) })),
+        fetchTrades({}).catch(e => ({ trades: [], ok: false, error: String(e.message || e) })),
+      ]).then(([sig, tr]) => {
+        setSignals(sig?.signals || []);
+        const matchTrades = (tr?.trades || []).filter((t: any) => t.match_id === matchId);
         setTrades(matchTrades);
-      }).catch(() => {});
+        if (sig?.ok === false || tr?.ok === false) setErr([sig?.error, tr?.error].filter(Boolean).join('; '));
+      });
     }, [matchId]);
-    
-    if (!signals.length && !trades.length) return null;
-    
+
+    if (!signals.length && !trades.length && !err) return null;
+
     return (
       <Card size="small" title="信号与交易记录" style={{ marginTop: 8 }}>
+        {err && <Alert type="error" message={`${t('dashboard.api_error')}: ${err}`} showIcon style={{ marginBottom: 8 }} />}
         {signals.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <strong>信号 ({signals.length}):</strong>
@@ -253,7 +311,7 @@ function MatchCard({ match }: { match: Match }) {
       </Card>
     );
   }
-  
+
   // 赛前：显示倒计时
   if (match.status === 'discovered') {
     return (
@@ -263,7 +321,7 @@ function MatchCard({ match }: { match: Match }) {
           <Space>
             <Tag color={statusColors[match.status]}>PRE-MATCH</Tag>
             <Tag>{match.game}</Tag>
-            <span>{match.team_a} vs {match.team_b}</span>
+            <MatchTitleLink match={match} />
             {match.start_time && <Countdown startTime={match.start_time} />}
           </Space>
         }
@@ -298,7 +356,7 @@ function MatchCard({ match }: { match: Match }) {
           <Space>
             <Tag color={statusColors[match.status]}>{match.status.toUpperCase()}</Tag>
             <Tag>{match.game}</Tag>
-            <span>{match.team_a} vs {match.team_b}</span>
+            <MatchTitleLink match={match} />
             {match.winning_team && <Tag color="gold">{match.winning_team} 胜</Tag>}
           </Space>
         }
@@ -338,7 +396,7 @@ function MatchCard({ match }: { match: Match }) {
         <Space>
           <Tag color={statusColors[match.status] || 'default'}>{match.status}</Tag>
           <Tag>{match.game}</Tag>
-          <span>{match.team_a} vs {match.team_b}</span>
+          <MatchTitleLink match={match} />
         </Space>
       }
       style={{ marginBottom: 12 }}
@@ -373,13 +431,26 @@ function Dashboard() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [gameFilter, setGameFilter] = useState<string>('');
+  const [teamFilter, setTeamFilter] = useState<string>('');
+  const [apiError, setApiError] = useState<string>('');
 
   const load = useCallback(() => {
     setLoading(true);
-    fetchMatches({ days: 30, ...(gameFilter ? { game: gameFilter } : {}) })
-      .then(d => setMatches(d.matches || []))
+    setApiError('');
+    const params: any = { days: 365 };
+    if (gameFilter) params.game = gameFilter;
+    if (teamFilter.trim()) params.team = teamFilter.trim();
+    fetchMatches(params)
+      .then(d => {
+        setMatches(d.matches || []);
+        if (d?.ok === false) setApiError(d.error || `${t('dashboard.api_error_hint')}`);
+      })
+      .catch(e => {
+        setApiError(String(e.message || e));
+        setMatches([]);
+      })
       .finally(() => setLoading(false));
-  }, [gameFilter]);
+  }, [gameFilter, teamFilter, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -407,18 +478,38 @@ function Dashboard() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <h2 style={{ margin: 0 }}>{t('dashboard.title')}</h2>
         <Select
           value={gameFilter}
           onChange={setGameFilter}
-          style={{ width: 120 }}
+          style={{ width: 140 }}
           options={[
             { value: '', label: t('dashboard.all_games') },
             ...gameOptions.map(g => ({ value: g, label: g.toUpperCase() })),
           ]}
         />
+        <Input.Search
+          placeholder={t('dashboard.team_filter_placeholder')}
+          value={teamFilter}
+          onChange={e => setTeamFilter(e.target.value)}
+          onSearch={load}
+          style={{ width: 220 }}
+          allowClear
+          enterButton={t('common.refresh')}
+        />
+        <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>{t('common.refresh')}</Button>
       </Space>
+
+      {apiError && (
+        <Alert
+          type="error"
+          message={`${t('dashboard.api_error')}: ${apiError}`}
+          description={t('dashboard.api_error_hint')}
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={8}><Card><Statistic title={t('dashboard.pre_match')} value={preMatch.length} /></Card></Col>

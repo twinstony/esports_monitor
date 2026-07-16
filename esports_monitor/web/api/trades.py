@@ -1,9 +1,9 @@
 """交易相关 API。
 
 端点：
-- GET /api/trades              交易列表（筛选 + 30天限制）
+- GET /api/trades              交易列表（筛选 + 回溯天数）
 - GET /api/trades/{trade_id}   交易详情（含信号依据）
-- GET /api/trades/stats        交易汇总统计（30天范围）
+- GET /api/trades/stats        交易汇总统计
 - GET /api/trades/stats/grouped 分组统计
 """
 from __future__ import annotations
@@ -18,11 +18,28 @@ from ...utils.time_utils import now_utc, to_utc_iso
 
 router = APIRouter(tags=["trades"])
 
-DEFAULT_DAYS = 30
+# 默认数据回溯天数：使用 365 天确保用户能看到所有历史模拟开单
+DEFAULT_DAYS = 365
 
 
 def _get_deps(request: Request):
     return request.app.state.deps
+
+
+def _build_polymarket_url(game: str, slug: str) -> str:
+    """构造 Polymarket 赛事页面 URL。
+
+    URL 格式：https://polymarket.com/zh/esports/{game_page_slug}/{event_slug}
+    game_page_slug 映射：lol -> league-of-legends, cs2 -> cs2, dota2 -> dota-2
+    """
+    if not slug:
+        return ""
+    game_page_slug = {
+        "lol": "league-of-legends",
+        "cs2": "cs2",
+        "dota2": "dota-2",
+    }.get(game, game or "esports")
+    return f"https://polymarket.com/zh/esports/{game_page_slug}/{slug}"
 
 
 @router.get("/trades")
@@ -31,9 +48,15 @@ async def list_trades(
     settled: Optional[int] = Query(None, description="结算状态: 0=未结算, 1=已结算"),
     game: Optional[str] = Query(None, description="游戏筛选"),
     signal: Optional[str] = Query(None, description="信号名称筛选"),
+    team: Optional[str] = Query(None, description="队伍名称模糊匹配（team_a / team_b / buy_team）"),
     days: int = Query(DEFAULT_DAYS, description="回溯天数"),
 ) -> Dict[str, Any]:
-    """获取交易列表（含比赛和信号信息）。"""
+    """获取交易列表（含比赛和信号信息）。
+
+    返回字段说明：
+    - trades: 交易列表，每行包含 polymarket_url 字段供前端生成跳转链接
+    - ok: True 表示接口成功；False 表示内部异常（error 字段给出原因）
+    """
     deps = _get_deps(request)
     try:
         cutoff = now_utc() - timedelta(days=days)
@@ -45,6 +68,7 @@ async def list_trades(
             "  t.id AS id, t.match_id AS match_id, "
             "  t.signal_id AS signal_id, "
             "  m.game AS game, m.team_a AS team_a, m.team_b AS team_b, "
+            "  m.slug AS slug, "
             "  t.buy_team AS buy_team, t.buy_price AS buy_price, "
             "  t.quantity AS quantity, t.notional_usd AS notional_usd, "
             "  t.vwap AS vwap, t.opened_at AS opened_at, "
@@ -68,6 +92,12 @@ async def list_trades(
         if signal:
             sql_parts.append("AND s.signal_name = ?")
             params.append(signal)
+        if team:
+            kw = team.lower().strip()
+            sql_parts.append(
+                "AND (LOWER(m.team_a) LIKE ? OR LOWER(m.team_b) LIKE ? OR LOWER(t.buy_team) LIKE ?)"
+            )
+            params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%"])
 
         sql_parts.append("ORDER BY t.opened_at DESC")
 
@@ -75,9 +105,13 @@ async def list_trades(
             cur = conn.execute(" ".join(sql_parts), params)
             trades = [dict(r) for r in cur.fetchall()]
 
-        return {"trades": trades, "total": len(trades)}
+        # 附加 Polymarket 链接
+        for tr in trades:
+            tr["polymarket_url"] = _build_polymarket_url(tr.get("game") or "", tr.get("slug") or "")
+
+        return {"trades": trades, "total": len(trades), "ok": True}
     except Exception as exc:
-        return {"trades": [], "total": 0, "error": str(exc)}
+        return {"trades": [], "total": 0, "ok": False, "error": str(exc)}
 
 
 @router.get("/trades/stats")
@@ -85,7 +119,7 @@ async def trade_stats(
     request: Request,
     days: int = Query(DEFAULT_DAYS, description="回溯天数"),
 ) -> Dict[str, Any]:
-    """获取交易汇总统计（30天范围）。"""
+    """获取交易汇总统计。"""
     deps = _get_deps(request)
     try:
         cutoff = now_utc() - timedelta(days=days)
@@ -149,6 +183,7 @@ async def trade_stats(
             if v is None:
                 result[k] = 0.0 if isinstance(v, float) else 0
 
+        result["ok"] = True
         return result
     except Exception as exc:
         return _empty_stats(error=str(exc))
@@ -190,7 +225,7 @@ async def trade_stats_grouped(
             ),
         }
         if group_by not in join_map:
-            return {"groups": [], "error": f"invalid group_by: {group_by}"}
+            return {"groups": [], "ok": False, "error": f"invalid group_by: {group_by}"}
 
         joins, key_col = join_map[group_by]
 
@@ -225,9 +260,9 @@ async def trade_stats_grouped(
             if row.get("total_pnl") is None:
                 row["total_pnl"] = 0.0
 
-        return {"groups": rows, "group_by": group_by}
+        return {"groups": rows, "group_by": group_by, "ok": True}
     except Exception as exc:
-        return {"groups": [], "group_by": group_by, "error": str(exc)}
+        return {"groups": [], "group_by": group_by, "ok": False, "error": str(exc)}
 
 
 @router.get("/trades/{trade_id}")
@@ -241,6 +276,7 @@ async def get_trade(trade_id: int, request: Request) -> Dict[str, Any]:
                 SELECT
                     t.id AS id, t.match_id AS match_id,
                     m.game AS game, m.team_a AS team_a, m.team_b AS team_b,
+                    m.slug AS slug,
                     t.buy_team AS buy_team, t.buy_price AS buy_price,
                     t.quantity AS quantity, t.notional_usd AS notional_usd,
                     t.vwap AS vwap, t.opened_at AS opened_at,
@@ -268,10 +304,12 @@ async def get_trade(trade_id: int, request: Request) -> Dict[str, Any]:
             )
             row = cur.fetchone()
             if not row:
-                return {"error": "trade not found"}
+                return {"error": "trade not found", "ok": False}
             trade = dict(row)
             morph_features = _parse_json_object(trade.get("morph_features"))
             trade["morph_features"] = morph_features
+            # 附加 Polymarket 链接
+            trade["polymarket_url"] = _build_polymarket_url(trade.get("game") or "", trade.get("slug") or "")
             signal = {
                 "id": trade.get("signal_id"),
                 "signal_name": trade.get("signal_name"),
@@ -289,9 +327,9 @@ async def get_trade(trade_id: int, request: Request) -> Dict[str, Any]:
                 "signal_strength": trade.get("signal_strength"),
                 "morph_features": morph_features,
             }
-            return {"trade": trade, "signal": signal}
+            return {"trade": trade, "signal": signal, "ok": True}
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": str(exc), "ok": False}
 
 
 def _parse_json_object(value: Any) -> Dict[str, Any]:
@@ -316,4 +354,7 @@ def _empty_stats(error: str = "") -> Dict[str, Any]:
     }
     if error:
         result["error"] = error
+        result["ok"] = False
+    else:
+        result["ok"] = True
     return result

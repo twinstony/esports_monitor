@@ -63,6 +63,7 @@ async def system_status(request: Request) -> Dict[str, Any]:
                 },
             },
             "task_runs": task_runs,
+            "ok": True,
         }
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": str(exc), "ok": False}

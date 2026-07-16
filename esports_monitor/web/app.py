@@ -14,9 +14,10 @@ import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .dependencies import WebDependencies
 from .ws.manager import ConnectionManager, EventBus
@@ -127,12 +128,41 @@ def create_app(base_dir: str) -> FastAPI:
             manager.disconnect(ws)
 
     # 静态文件托管（前端打包产物）
+    # 实现 SPA history 路由回退：未匹配的路径返回 index.html，让前端路由处理
     static_dir = os.path.join(base_dir, "webui", "dist")
+    index_file = os.path.join(static_dir, "index.html")
+
     if os.path.isdir(static_dir):
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+        # 静态资源（js/css/图片等）由 StaticFiles 提供
+        app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
+
+        # 根路径返回 index.html
+        @app.get("/", include_in_schema=False)
+        async def root_index():
+            if os.path.isfile(index_file):
+                return FileResponse(index_file)
+            return {"message": "Esports Monitor Web UI", "note": "index.html 不存在"}
+
+        # SPA history 路由回退：除 /api、/ws、/assets、/docs 等之外的路径都返回 index.html
+        # 这样直接刷新 /trades、/morphology、/system 等路由不会被 FastAPI 视为 404
+        @app.get("/{path:path}", include_in_schema=False)
+        async def spa_fallback(path: str, request: Request):
+            # 已注册的 API 路由会优先匹配，这里只处理静态资源或 SPA 路由
+            # 先尝试在静态目录中查找匹配的文件（如 favicon.ico、vite.svg 等）
+            candidate = os.path.join(static_dir, path)
+            if path and os.path.isfile(candidate) and not path.startswith(("api/", "ws")):
+                # 安全检查：禁止路径穿越
+                real_static = os.path.realpath(static_dir)
+                real_candidate = os.path.realpath(candidate)
+                if real_candidate.startswith(real_static + os.sep):
+                    return FileResponse(real_candidate)
+            # 否则返回 index.html 让前端路由处理
+            if os.path.isfile(index_file):
+                return FileResponse(index_file)
+            raise HTTPException(status_code=404, detail="index.html not found")
     else:
         # 前端未打包时，提供简单首页
-        @app.get("/")
+        @app.get("/", include_in_schema=False)
         async def root():
             return {
                 "message": "Esports Monitor Web UI",

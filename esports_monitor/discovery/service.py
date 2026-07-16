@@ -100,6 +100,8 @@ class MarketDiscoveryService:
         self.clob_client = clob_client
         self.config = config or {}
         self._logger = logger or logging.getLogger(__name__)
+        # 是否启用联赛白名单过滤（在 discover() 中根据 leagues 配置置位）
+        self._leagues_filter_active: bool = False
 
     # ------------------------------------------------------------------
     # 公开方法
@@ -159,13 +161,34 @@ class MarketDiscoveryService:
         # 按游戏抓取 Polymarket 页面数据，获取权威的 isLive / startTime。
         # Gamma API 的 live 字段不准确（如 CS2 无直播却被标记），网页 SSR
         # 数据中的 isLive:true 是判断比赛是否正在进行的唯一可靠数据源。
+        # 若配置了 leagues 白名单，则抓取联赛专属页（仅返回属于该联赛的赛事），
+        # 后续 _screen_market 会用 page_events 作为白名单过滤掉其他联赛的比赛。
+        leagues = self.config.get("leagues") or []
+        if not isinstance(leagues, list):
+            leagues = [str(leagues)]
         page_events_by_game: Dict[str, Dict[str, Dict[str, Any]]] = {}
         for game in games:
-            try:
-                page_events_by_game[game] = self.gamma_client.fetch_game_page_events(game)
-            except Exception as exc:
-                self._logger.debug("抓取游戏页面失败 %s: %s", game, exc)
-                page_events_by_game[game] = {}
+            page_events_by_game[game] = {}
+            if leagues:
+                # 抓取联赛专属页：仅返回属于指定联赛的赛事 slug
+                for league in leagues:
+                    try:
+                        page_data = self.gamma_client.fetch_game_page_events(
+                            game, league=str(league)
+                        )
+                        page_events_by_game[game].update(page_data)
+                    except Exception as exc:
+                        self._logger.debug(
+                            "抓取联赛页失败 %s/%s: %s", game, league, exc
+                        )
+            else:
+                # 无 leagues 配置：抓取游戏总页，返回该游戏下所有赛事
+                try:
+                    page_events_by_game[game] = self.gamma_client.fetch_game_page_events(game)
+                except Exception as exc:
+                    self._logger.debug("抓取游戏页面失败 %s: %s", game, exc)
+
+        self._leagues_filter_active = bool(leagues)
 
         for event in events:
             try:
@@ -180,6 +203,16 @@ class MarketDiscoveryService:
                     continue
 
                 page_events = page_events_by_game.get(game) or {}
+                # 联赛白名单过滤：若配置了 leagues，仅保留出现在联赛页的赛事
+                event_slug = event.get("slug") or ""
+                if self._leagues_filter_active and event_slug and page_events and event_slug not in page_events:
+                    self._logger.debug(
+                        "赛事 %s 不在配置的联赛页 %s 中，跳过",
+                        event_slug, leagues,
+                    )
+                    result.skipped += 1
+                    continue
+
                 for m in markets:
                     discovered = self._screen_market(event, game, m, page_events)
                     if discovered:
@@ -303,6 +336,9 @@ class MarketDiscoveryService:
                 return None
 
         league = self._extract_league(event)
+        # 若联赛页提供了 league slug（如 "esports-world-cup"），优先使用
+        if page_info.get("league"):
+            league = str(page_info["league"])
         start_time = start_time_str
         end_time = end_time_str
 
